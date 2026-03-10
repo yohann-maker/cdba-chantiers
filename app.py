@@ -507,11 +507,35 @@ async def logout():
     return response
 
 
+LAST_SYNC_FILE = DATA_DIR / "last_sync.txt"
+SYNC_INTERVAL = 900  # 15 minutes
+
+
+def _should_auto_sync():
+    """Vérifie si le dernier sync date de plus de 15 minutes."""
+    if not LAST_SYNC_FILE.exists():
+        return True
+    try:
+        ts = float(LAST_SYNC_FILE.read_text().strip())
+        return (time.time() - ts) > SYNC_INTERVAL
+    except (ValueError, OSError):
+        return True
+
+
+def _record_sync():
+    LAST_SYNC_FILE.write_text(str(time.time()))
+
+
 @app.get("/board", response_class=HTMLResponse)
 async def board(request: Request):
     user = get_current_user(request)
     if not user:
         return RedirectResponse("/login", status_code=302)
+
+    # Auto-sync si dernier sync > 15 min
+    if _should_auto_sync():
+        sync_from_sellsy()
+        _record_sync()
 
     chantiers = load_chantiers()
 
