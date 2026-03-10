@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CDBA — Tableau Chantiers</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <header class="topbar">
+        <div class="topbar-left">
+            <h1 class="topbar-title">CDBA Chantiers</h1>
+        </div>
+        <div class="topbar-right">
+            <form method="post" action="/sync" style="display:inline">
+                <button type="submit" class="btn btn-small btn-outline" title="Synchroniser avec Sellsy">Sync Sellsy</button>
+            </form>
+            <span class="user-badge">{{ user.name }}</span>
+            <a href="/logout" class="btn btn-small btn-ghost">Quitter</a>
+        </div>
+    </header>
+
+    <main class="board">
+        {% for key, col in colonnes.items() %}
+        <div class="board-column">
+            <div class="column-header" style="border-top: 4px solid {{ col.color }}">
+                <span class="column-icon">{{ col.icon }}</span>
+                <span class="column-title">{{ col.label }}</span>
+                <span class="column-count">{{ col.chantiers|length }}</span>
+            </div>
+            <div class="column-cards">
+                {% for ch in col.chantiers %}
+                <a href="/chantier/{{ ch.id }}" class="card">
+                    <div class="card-title">{{ ch.sellsy.client or ch.sellsy.nom }}</div>
+                    <div class="card-subtitle">{{ ch.sellsy.nom }}</div>
+                    <div class="card-meta">
+                        <span class="card-amount">{{ "%.0f"|format(ch.sellsy.montant) }} €</span>
+                        {% if ch.sellsy.commercial %}
+                        <span class="card-commercial">{{ ch.sellsy.commercial }}</span>
+                        {% endif %}
+                    </div>
+                    {% if ch.preparation and ch.preparation.nb_jours %}
+                    <div class="card-tags">
+                        <span class="tag tag-blue">{{ ch.preparation.nb_jours }}j</span>
+                        <span class="tag tag-blue">{{ ch.preparation.nb_personnes }} pers.</span>
+                    </div>
+                    {% endif %}
+                    {% if ch.programmation and ch.programmation.semaine %}
+                    <div class="card-tags">
+                        <span class="tag tag-green">S{{ ch.programmation.semaine }}</span>
+                    </div>
+                    {% endif %}
+                    <div class="card-validations">
+                        <span class="validation {{ 'done' if ch.preparation.get('valide_par') else '' }}" title="Préparation">W</span>
+                        <span class="validation {{ 'done' if ch.commande.get('valide_par') else '' }}" title="Commande">J</span>
+                        <span class="validation {{ 'done' if ch.programmation.get('valide_par') else '' }}" title="Programmation">G</span>
+                    </div>
+                </a>
+                {% endfor %}
+                {% if not col.chantiers %}
+                <div class="card-empty">Aucun chantier</div>
+                {% endif %}
+            </div>
+        </div>
+        {% endfor %}
+    </main>
+</body>
+</html>

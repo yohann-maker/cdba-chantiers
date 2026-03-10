@@ -1,0 +1,607 @@
+/* ──────────────────────────────────────
+   CDBA Chantiers — Styles
+   ────────────────────────────────────── */
+
+:root {
+    --bg: #0f172a;
+    --bg-card: #1e293b;
+    --bg-input: #334155;
+    --text: #f1f5f9;
+    --text-muted: #94a3b8;
+    --primary: #3b82f6;
+    --primary-hover: #2563eb;
+    --red: #ef4444;
+    --orange: #f97316;
+    --yellow: #eab308;
+    --green: #22c55e;
+    --border: #334155;
+    --radius: 10px;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+}
+
+/* ── Login ── */
+
+.login-body {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+}
+
+.login-card {
+    background: var(--bg-card);
+    border-radius: 16px;
+    padding: 40px;
+    width: 100%;
+    max-width: 380px;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.4);
+}
+
+.login-logo {
+    text-align: center;
+    margin-bottom: 32px;
+}
+
+.login-logo h1 {
+    font-size: 32px;
+    font-weight: 800;
+    color: var(--primary);
+    letter-spacing: 2px;
+}
+
+.login-logo p {
+    color: var(--text-muted);
+    margin-top: 4px;
+}
+
+/* ── Alerts ── */
+
+.alert {
+    padding: 10px 14px;
+    border-radius: 8px;
+    margin-bottom: 16px;
+    font-size: 14px;
+}
+
+.alert-error {
+    background: rgba(239, 68, 68, 0.15);
+    color: var(--red);
+    border: 1px solid rgba(239, 68, 68, 0.3);
+}
+
+/* ── Forms ── */
+
+.form-group {
+    margin-bottom: 16px;
+}
+
+.form-group label {
+    display: block;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-muted);
+    margin-bottom: 6px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.form-group input,
+.form-group textarea,
+.form-group select {
+    width: 100%;
+    padding: 10px 14px;
+    background: var(--bg-input);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--text);
+    font-size: 15px;
+    transition: border-color 0.2s;
+}
+
+.form-group input:focus,
+.form-group textarea:focus {
+    outline: none;
+    border-color: var(--primary);
+}
+
+.form-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+}
+
+.checkbox-group {
+    display: flex;
+    gap: 16px;
+    flex-wrap: wrap;
+}
+
+.checkbox-label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 15px;
+    color: var(--text);
+    cursor: pointer;
+    text-transform: none;
+    font-weight: 400;
+    letter-spacing: 0;
+}
+
+.checkbox-label input[type="checkbox"] {
+    width: 18px;
+    height: 18px;
+    accent-color: var(--primary);
+}
+
+/* ── Buttons ── */
+
+.btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 10px 20px;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 600;
+    text-decoration: none;
+    cursor: pointer;
+    border: none;
+    transition: all 0.2s;
+}
+
+.btn-primary {
+    background: var(--primary);
+    color: white;
+}
+
+.btn-primary:hover {
+    background: var(--primary-hover);
+}
+
+.btn-full {
+    width: 100%;
+    padding: 12px;
+    font-size: 16px;
+}
+
+.btn-small {
+    padding: 6px 12px;
+    font-size: 13px;
+}
+
+.btn-outline {
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--text-muted);
+}
+
+.btn-outline:hover {
+    border-color: var(--primary);
+    color: var(--primary);
+}
+
+.btn-ghost {
+    background: transparent;
+    color: var(--text-muted);
+}
+
+.btn-ghost:hover {
+    color: var(--text);
+}
+
+/* ── Topbar ── */
+
+.topbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 20px;
+    background: var(--bg-card);
+    border-bottom: 1px solid var(--border);
+    position: sticky;
+    top: 0;
+    z-index: 100;
+}
+
+.topbar-left {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.topbar-title {
+    font-size: 18px;
+    font-weight: 700;
+}
+
+.topbar-right {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.user-badge {
+    background: var(--primary);
+    color: white;
+    padding: 4px 12px;
+    border-radius: 20px;
+    font-size: 13px;
+    font-weight: 600;
+}
+
+/* ── Board (Kanban) ── */
+
+.board {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 16px;
+    padding: 20px;
+    min-height: calc(100vh - 60px);
+}
+
+.board-column {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+}
+
+.column-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 12px 14px;
+    background: var(--bg-card);
+    border-radius: var(--radius);
+    margin-bottom: 10px;
+}
+
+.column-icon {
+    font-size: 16px;
+}
+
+.column-title {
+    font-size: 14px;
+    font-weight: 700;
+    flex: 1;
+}
+
+.column-count {
+    background: var(--bg-input);
+    color: var(--text-muted);
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.column-cards {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    flex: 1;
+}
+
+/* ── Cards ── */
+
+.card {
+    display: block;
+    background: var(--bg-card);
+    border-radius: var(--radius);
+    padding: 14px;
+    text-decoration: none;
+    color: var(--text);
+    transition: transform 0.15s, box-shadow 0.15s;
+    border: 1px solid transparent;
+}
+
+.card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 24px rgba(0,0,0,0.3);
+    border-color: var(--primary);
+}
+
+.card-title {
+    font-size: 14px;
+    font-weight: 700;
+    margin-bottom: 2px;
+}
+
+.card-subtitle {
+    font-size: 12px;
+    color: var(--text-muted);
+    margin-bottom: 8px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.card-meta {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+}
+
+.card-amount {
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--green);
+}
+
+.card-commercial {
+    font-size: 11px;
+    color: var(--text-muted);
+}
+
+.card-tags {
+    display: flex;
+    gap: 6px;
+    margin-bottom: 8px;
+}
+
+.tag {
+    padding: 2px 8px;
+    border-radius: 6px;
+    font-size: 11px;
+    font-weight: 600;
+}
+
+.tag-blue {
+    background: rgba(59, 130, 246, 0.2);
+    color: var(--primary);
+}
+
+.tag-green {
+    background: rgba(34, 197, 94, 0.2);
+    color: var(--green);
+}
+
+.card-validations {
+    display: flex;
+    gap: 4px;
+}
+
+.validation {
+    width: 24px;
+    height: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    font-size: 11px;
+    font-weight: 700;
+    background: var(--bg-input);
+    color: var(--text-muted);
+}
+
+.validation.done {
+    background: var(--green);
+    color: white;
+}
+
+.card-empty {
+    text-align: center;
+    padding: 40px 20px;
+    color: var(--text-muted);
+    font-size: 13px;
+}
+
+/* ── Detail page ── */
+
+.detail-page {
+    max-width: 800px;
+    margin: 0 auto;
+    padding: 20px;
+}
+
+.detail-section {
+    background: var(--bg-card);
+    border-radius: var(--radius);
+    padding: 20px;
+    margin-bottom: 16px;
+}
+
+.detail-section h2 {
+    font-size: 16px;
+    font-weight: 700;
+    margin-bottom: 16px;
+}
+
+.info-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 12px;
+}
+
+.info-item {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.info-label {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--text-muted);
+    font-weight: 600;
+}
+
+.info-value {
+    font-size: 15px;
+    font-weight: 500;
+}
+
+.info-value.amount {
+    color: var(--green);
+    font-weight: 700;
+    font-size: 18px;
+}
+
+.info-description {
+    margin-top: 12px;
+}
+
+.info-description p {
+    color: var(--text-muted);
+    font-size: 14px;
+    margin-top: 4px;
+}
+
+.materiaux-list {
+    background: var(--bg);
+    padding: 12px;
+    border-radius: 8px;
+    font-size: 14px;
+    color: var(--text);
+    white-space: pre-wrap;
+    font-family: inherit;
+    margin-top: 6px;
+}
+
+/* ── Steps ── */
+
+.step-section {
+    border-left: 3px solid var(--border);
+}
+
+.step-section.step-active {
+    border-left-color: var(--primary);
+}
+
+.step-section.step-done {
+    border-left-color: var(--green);
+}
+
+.step-section.step-locked {
+    opacity: 0.5;
+}
+
+.step-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 16px;
+}
+
+.step-badge {
+    width: 28px;
+    height: 28px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    color: white;
+    font-size: 13px;
+    font-weight: 700;
+    flex-shrink: 0;
+}
+
+.step-status {
+    margin-left: auto;
+    font-size: 12px;
+    font-weight: 600;
+    padding: 4px 10px;
+    border-radius: 6px;
+}
+
+.step-status.done {
+    background: rgba(34, 197, 94, 0.15);
+    color: var(--green);
+}
+
+.step-status.active {
+    background: rgba(59, 130, 246, 0.15);
+    color: var(--primary);
+}
+
+.step-form {
+    margin-top: 12px;
+}
+
+.recap-grid {
+    margin-bottom: 16px;
+    padding: 12px;
+    background: var(--bg);
+    border-radius: 8px;
+}
+
+/* ── Timeline ── */
+
+.timeline {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.timeline-event {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    font-size: 13px;
+    padding: 6px 0;
+    border-bottom: 1px solid rgba(51, 65, 85, 0.5);
+}
+
+.timeline-date {
+    color: var(--text-muted);
+    font-size: 12px;
+    flex-shrink: 0;
+    width: 130px;
+}
+
+.timeline-action {
+    flex: 1;
+}
+
+.timeline-user {
+    color: var(--text-muted);
+    font-size: 12px;
+}
+
+/* ── Responsive ── */
+
+@media (max-width: 900px) {
+    .board {
+        grid-template-columns: 1fr;
+        gap: 12px;
+    }
+    .column-cards {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+    }
+}
+
+@media (max-width: 600px) {
+    .topbar {
+        padding: 10px 14px;
+    }
+    .topbar-title {
+        font-size: 15px;
+    }
+    .detail-page {
+        padding: 12px;
+    }
+    .form-row {
+        grid-template-columns: 1fr;
+    }
+    .info-grid {
+        grid-template-columns: 1fr 1fr;
+    }
+    .timeline-event {
+        flex-wrap: wrap;
+    }
+    .timeline-date {
+        width: 100%;
+    }
+}

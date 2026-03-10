@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ ch.sellsy.client or ch.sellsy.nom }} — CDBA Chantiers</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <header class="topbar">
+        <div class="topbar-left">
+            <a href="/board" class="btn btn-small btn-ghost">&larr; Tableau</a>
+            <h1 class="topbar-title">{{ ch.sellsy.client or ch.sellsy.nom }}</h1>
+        </div>
+        <div class="topbar-right">
+            <span class="user-badge">{{ user.name }}</span>
+        </div>
+    </header>
+
+    <main class="detail-page">
+        <!-- Infos Sellsy -->
+        <section class="detail-section">
+            <h2>Informations chantier</h2>
+            <div class="info-grid">
+                <div class="info-item">
+                    <span class="info-label">Client</span>
+                    <span class="info-value">{{ ch.sellsy.client }}</span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">Contact</span>
+                    <span class="info-value">{{ ch.sellsy.contact or "—" }}</span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">Opportunité</span>
+                    <span class="info-value">{{ ch.sellsy.nom }}</span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">Montant</span>
+                    <span class="info-value amount">{{ "%.0f"|format(ch.sellsy.montant) }} € HT</span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">Commercial</span>
+                    <span class="info-value">{{ ch.sellsy.commercial or "—" }}</span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">Étape Sellsy</span>
+                    <span class="info-value">{{ ch.sellsy.step }}</span>
+                </div>
+            </div>
+            {% if ch.sellsy.description %}
+            <div class="info-description">
+                <span class="info-label">Description</span>
+                <p>{{ ch.sellsy.description }}</p>
+            </div>
+            {% endif %}
+        </section>
+
+        <!-- Étape 1 : Préparation (William) -->
+        <section class="detail-section step-section {{ 'step-done' if ch.preparation.get('valide_par') else ('step-active' if ch.etape == 'a_preparer' else 'step-locked') }}">
+            <div class="step-header">
+                <span class="step-badge" style="background: #ef4444">1</span>
+                <h2>Préparation technique</h2>
+                {% if ch.preparation.get('valide_par') %}
+                <span class="step-status done">Validé par {{ ch.preparation.valide_par }}</span>
+                {% elif ch.etape == 'a_preparer' %}
+                <span class="step-status active">En attente</span>
+                {% endif %}
+            </div>
+
+            {% if ch.preparation.get('valide_par') %}
+            <div class="info-grid">
+                <div class="info-item">
+                    <span class="info-label">Personnes</span>
+                    <span class="info-value">{{ ch.preparation.nb_personnes }}</span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">Jours</span>
+                    <span class="info-value">{{ ch.preparation.nb_jours }}</span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">Équipe</span>
+                    <span class="info-value">{{ ch.preparation.equipe | join(", ") }}</span>
+                </div>
+            </div>
+            {% if ch.preparation.materiaux %}
+            <div class="info-description">
+                <span class="info-label">Matériaux</span>
+                <pre class="materiaux-list">{{ ch.preparation.materiaux }}</pre>
+            </div>
+            {% endif %}
+            {% elif ch.etape == 'a_preparer' %}
+            <form method="post" action="/chantier/{{ ch.id }}/preparation" class="step-form">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="nb_personnes">Nombre de personnes</label>
+                        <input type="number" id="nb_personnes" name="nb_personnes" min="1" max="10" value="2" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="nb_jours">Nombre de jours</label>
+                        <input type="number" id="nb_jours" name="nb_jours" min="1" max="30" value="1" required>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>Équipe préconisée</label>
+                    <div class="checkbox-group">
+                        {% for membre in equipe %}
+                        <label class="checkbox-label">
+                            <input type="checkbox" name="equipe" value="{{ membre }}">
+                            {{ membre }}
+                        </label>
+                        {% endfor %}
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label for="materiaux">Matériaux nécessaires</label>
+                    <textarea id="materiaux" name="materiaux" rows="5" placeholder="Un matériau par ligne&#10;Ex: 20 tuiles canal&#10;5 sacs de ciment&#10;2 rouleaux de bâche"></textarea>
+                </div>
+                <div class="form-group">
+                    <label for="notes">Notes</label>
+                    <textarea id="notes" name="notes" rows="2" placeholder="Remarques, accès difficile, etc."></textarea>
+                </div>
+                <button type="submit" class="btn btn-primary">Valider la préparation</button>
+            </form>
+            {% endif %}
+        </section>
+
+        <!-- Étape 2 : Commande matériaux (Julien) -->
+        <section class="detail-section step-section {{ 'step-done' if ch.commande.get('valide_par') else ('step-active' if ch.etape == 'a_commander' else 'step-locked') }}">
+            <div class="step-header">
+                <span class="step-badge" style="background: #f97316">2</span>
+                <h2>Commande matériaux</h2>
+                {% if ch.commande.get('valide_par') %}
+                <span class="step-status done">Validé par {{ ch.commande.valide_par }}</span>
+                {% elif ch.etape == 'a_commander' %}
+                <span class="step-status active">En attente</span>
+                {% endif %}
+            </div>
+
+            {% if ch.preparation.get('materiaux') and ch.etape in ['a_commander', 'a_programmer', 'pret'] %}
+            <div class="info-description">
+                <span class="info-label">Matériaux demandés par {{ ch.preparation.valide_par }}</span>
+                <pre class="materiaux-list">{{ ch.preparation.materiaux }}</pre>
+            </div>
+            {% endif %}
+
+            {% if ch.commande.get('valide_par') %}
+            <div class="info-grid">
+                <div class="info-item">
+                    <span class="info-label">Fournisseur</span>
+                    <span class="info-value">{{ ch.commande.fournisseur or "—" }}</span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">Réf. commande</span>
+                    <span class="info-value">{{ ch.commande.reference_commande or "—" }}</span>
+                </div>
+            </div>
+            {% elif ch.etape == 'a_commander' %}
+            <form method="post" action="/chantier/{{ ch.id }}/commande" class="step-form">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="fournisseur">Fournisseur</label>
+                        <input type="text" id="fournisseur" name="fournisseur" placeholder="Ex: Point P, Larivière...">
+                    </div>
+                    <div class="form-group">
+                        <label for="reference_commande">N° commande</label>
+                        <input type="text" id="reference_commande" name="reference_commande" placeholder="Réf. commande">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label for="notes">Notes</label>
+                    <textarea id="notes" name="notes" rows="2" placeholder="Délai livraison, remarques..."></textarea>
+                </div>
+                <button type="submit" class="btn btn-primary">Valider la commande</button>
+            </form>
+            {% endif %}
+        </section>
+
+        <!-- Étape 3 : Programmation (Gina/Charlotte) -->
+        <section class="detail-section step-section {{ 'step-done' if ch.programmation.get('valide_par') else ('step-active' if ch.etape == 'a_programmer' else 'step-locked') }}">
+            <div class="step-header">
+                <span class="step-badge" style="background: #eab308">3</span>
+                <h2>Programmation</h2>
+                {% if ch.programmation.get('valide_par') %}
+                <span class="step-status done">Validé par {{ ch.programmation.valide_par }}</span>
+                {% elif ch.etape == 'a_programmer' %}
+                <span class="step-status active">En attente</span>
+                {% endif %}
+            </div>
+
+            {% if ch.preparation.get('valide_par') and ch.etape in ['a_programmer', 'pret'] %}
+            <div class="info-grid recap-grid">
+                <div class="info-item">
+                    <span class="info-label">Durée</span>
+                    <span class="info-value">{{ ch.preparation.nb_jours }} jour(s)</span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">Effectif</span>
+                    <span class="info-value">{{ ch.preparation.nb_personnes }} personne(s)</span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">Équipe</span>
+                    <span class="info-value">{{ ch.preparation.equipe | join(", ") or "—" }}</span>
+                </div>
+            </div>
+            {% endif %}
+
+            {% if ch.programmation.get('valide_par') %}
+            <div class="info-grid">
+                <div class="info-item">
+                    <span class="info-label">Semaine</span>
+                    <span class="info-value">S{{ ch.programmation.semaine }}</span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">Date début</span>
+                    <span class="info-value">{{ ch.programmation.date_debut or "—" }}</span>
+                </div>
+            </div>
+            {% elif ch.etape == 'a_programmer' %}
+            <form method="post" action="/chantier/{{ ch.id }}/programmation" class="step-form">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="semaine">Semaine</label>
+                        <input type="text" id="semaine" name="semaine" placeholder="Ex: 14">
+                    </div>
+                    <div class="form-group">
+                        <label for="date_debut">Date de début</label>
+                        <input type="date" id="date_debut" name="date_debut">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label for="notes">Notes</label>
+                    <textarea id="notes" name="notes" rows="2" placeholder="Remarques planning..."></textarea>
+                </div>
+                <button type="submit" class="btn btn-primary">Valider la programmation</button>
+            </form>
+            {% endif %}
+        </section>
+
+        <!-- Historique -->
+        <section class="detail-section">
+            <h2>Historique</h2>
+            <div class="timeline">
+                {% for event in ch.historique | reverse %}
+                <div class="timeline-event">
+                    <span class="timeline-date">{{ event.date[:16].replace('T', ' ') }}</span>
+                    <span class="timeline-action">{{ event.action }}</span>
+                    <span class="timeline-user">— {{ event.par }}</span>
+                </div>
+                {% endfor %}
+            </div>
+        </section>
+    </main>
+</body>
+</html>

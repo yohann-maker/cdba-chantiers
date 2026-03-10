@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CDBA Chantiers — Connexion</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body class="login-body">
+    <div class="login-card">
+        <div class="login-logo">
+            <h1>CDBA</h1>
+            <p>Préparation Chantiers</p>
+        </div>
+        {% if error %}
+        <div class="alert alert-error">{{ error }}</div>
+        {% endif %}
+        <form method="post" action="/login">
+            <div class="form-group">
+                <label for="username">Prénom</label>
+                <input type="text" id="username" name="username" placeholder="Ex: william" required autofocus>
+            </div>
+            <div class="form-group">
+                <label for="password">Mot de passe</label>
+                <input type="password" id="password" name="password" required>
+            </div>
+            <button type="submit" class="btn btn-primary btn-full">Se connecter</button>
+        </form>
+    </div>
+</body>
+</html>
