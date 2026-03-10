@@ -226,10 +226,24 @@ def create_calendar_events(ch):
     client_name = sellsy.get("client", "")
     montant = sellsy.get("montant", 0)
     contact = sellsy.get("contact", "")
+    mobile = sellsy.get("mobile", "")
     adresse = sellsy.get("adresse", "")
-    description = f"Montant : {montant:.0f} € HT"
+    commercial = sellsy.get("commercial", "")
+    nb_personnes = preparation.get("nb_personnes", "")
+    equipe_noms = ", ".join(equipe)
+
+    # Description complète
+    desc_lines = []
+    if mobile:
+        desc_lines.append(f"Mobile : {mobile}")
     if contact:
-        description = f"Contact : {contact}\n{description}"
+        desc_lines.append(f"Contact : {contact}")
+    desc_lines.append(f"Montant : {montant:,.0f} € HT".replace(",", " "))
+    if commercial:
+        desc_lines.append(f"Commercial : {commercial}")
+    desc_lines.append(f"Équipe : {equipe_noms} ({nb_personnes} pers.)")
+    desc_lines.append(f"Durée : {nb_jours} jour(s)")
+    description = "\n".join(desc_lines)
 
     # Détection doublons + création
     nom_recherche = _extract_client_nom(client_name)
@@ -564,6 +578,21 @@ def sync_from_sellsy():
         # Récupérer l'adresse
         address = _fetch_opp_address(client, opp_id)
 
+        # Récupérer le mobile du contact si pas déjà dans l'opp
+        if not opp_data.get("mobile") and detail:
+            contact_id = detail.get("contactId", detail.get("contact_id", ""))
+            if contact_id and str(contact_id) != "0":
+                try:
+                    contact_data = client.call("Peoples.getOne", {"id": contact_id})
+                    opp_data["mobile"] = (
+                        contact_data.get("mobile", "")
+                        or contact_data.get("phoneMobile", "")
+                        or contact_data.get("phone", "")
+                        or ""
+                    )
+                except Exception:
+                    pass
+
         opp_data["adresse"] = address
         opp_data["devis_ref"] = devis_ref
         opp_data["devis_lines"] = devis_lines
@@ -610,10 +639,22 @@ def _extract_opp_data(opp):
     client_name = opp.get("thirdName", opp.get("linkedName", ""))
     contact_name = opp.get("contactName", opp.get("contactFullName", ""))
 
+    # Téléphone mobile — on cherche dans plusieurs champs
+    mobile = (
+        opp.get("contactMobile", "")
+        or opp.get("contactPhone", "")
+        or opp.get("thirdMobile", "")
+        or opp.get("thirdPhone", "")
+        or opp.get("phoneMobile", "")
+        or opp.get("mobile", "")
+        or ""
+    )
+
     return {
         "nom": opp.get("name", opp.get("ident", "")),
         "client": client_name,
         "contact": contact_name,
+        "mobile": mobile,
         "montant": amount,
         "step": opp.get("stepLabel", opp.get("step_label", "")),
         "commercial": opp.get("ownerFullName", ""),
