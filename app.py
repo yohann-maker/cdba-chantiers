@@ -48,6 +48,7 @@ USERS = {
     "gina": {"name": "Gina", "role": "planificatrice", "password": os.getenv("PASS_GINA", "cdba2026")},
     "charlotte": {"name": "Charlotte", "role": "planificatrice", "password": os.getenv("PASS_CHARLOTTE", "cdba2026")},
     "yohann": {"name": "Yohann", "role": "admin", "password": os.getenv("PASS_YOHANN", "cdba2026")},
+    "olivier": {"name": "Olivier", "role": "admin", "password": os.getenv("PASS_OLIVIER", "cdba2026")},
 }
 
 # Sellsy API config (via variables d'environnement)
