@@ -85,18 +85,29 @@ class SellsyClient:
             resource_owner_secret=config["user_secret"],
         )
 
-    def call(self, method, params=None):
-        do_in = json.dumps({"method": method, "params": params or {}})
-        response = self.session.post(
-            self.api_url,
-            data={"request": 1, "io_mode": "json", "do_in": do_in},
-        )
-        if response.status_code != 200:
-            raise Exception(f"HTTP {response.status_code}: {response.text[:300]}")
-        data = response.json()
-        if data.get("status") == "error":
-            raise Exception(f"Sellsy error: {data.get('error', {})}")
-        return data.get("response", data)
+    def call(self, method, params=None, retries=3):
+        for attempt in range(retries):
+            do_in = json.dumps({"method": method, "params": params or {}})
+            response = self.session.post(
+                self.api_url,
+                data={"request": 1, "io_mode": "json", "do_in": do_in},
+            )
+            if response.status_code == 429 or "LIMIT_REQUEST_REACHED" in response.text:
+                time.sleep(2 + attempt * 3)
+                continue
+            if response.status_code != 200:
+                raise Exception(f"HTTP {response.status_code}: {response.text[:300]}")
+            data = response.json()
+            if data.get("status") == "error":
+                err = data.get("error", {})
+                if isinstance(err, dict) and "LIMIT" in str(err.get("message", "")):
+                    time.sleep(2 + attempt * 3)
+                    continue
+                raise Exception(f"Sellsy error: {err}")
+            # Petit délai entre les appels pour ne pas dépasser la limite
+            time.sleep(0.5)
+            return data.get("response", data)
+        raise Exception(f"Rate limit dépassé après {retries} tentatives pour {method}")
 
     def call_paginated(self, method, params=None, max_pages=50):
         params = params or {}
@@ -309,8 +320,23 @@ def sync_from_sellsy():
         # Si déjà dans notre base, on met à jour les infos Sellsy mais on garde les données saisies
         if opp_id in chantiers:
             chantiers[opp_id]["sellsy"] = _extract_opp_data(opp)
-            # Mettre à jour les fichiers Sellsy à chaque sync
-            if v2_client:
+
+            # Re-fetch devis si manquant ou en erreur
+            existing_lines = chantiers[opp_id]["sellsy"].get("devis_lines", [])
+            has_error = any(l.get("reference") == "Erreur" for l in existing_lines)
+            if not existing_lines or has_error:
+                try:
+                    detail = client.call("Opportunities.getOne", {"id": opp_id})
+                    main_doc_id = detail.get("mainDocId")
+                    if main_doc_id and str(main_doc_id) != "0":
+                        chantiers[opp_id]["sellsy"]["devis_lines"] = _fetch_devis_lines(client, main_doc_id)
+                        doc_info = client.call("Document.getOne", {"doctype": "estimate", "docid": main_doc_id})
+                        chantiers[opp_id]["sellsy"]["devis_ref"] = doc_info.get("ident", "")
+                except Exception:
+                    pass
+
+            # Mettre à jour les fichiers Sellsy
+            if v2_client and not chantiers[opp_id].get("sellsy_files"):
                 try:
                     chantiers[opp_id]["sellsy_files"] = v2_client.get_opportunity_files(opp_id)
                 except Exception:
