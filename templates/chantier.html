@@ -152,13 +152,13 @@
         {% endif %}
 
         <!-- Étape 1 : Préparation (William) -->
-        <section class="detail-section step-section {{ 'step-done' if ch.preparation.get('valide_par') else ('step-active' if ch.etape == 'a_preparer' else 'step-locked') }}">
+        <section class="detail-section step-section {{ 'step-done' if ch.preparation.get('valide_par') else 'step-active' }}">
             <div class="step-header">
                 <span class="step-badge" style="background: #ef4444">1</span>
                 <h2>Préparation technique</h2>
                 {% if ch.preparation.get('valide_par') %}
                 <span class="step-status done">Validé par {{ ch.preparation.valide_par }}</span>
-                {% elif ch.etape == 'a_preparer' %}
+                {% else %}
                 <span class="step-status active">En attente</span>
                 {% endif %}
             </div>
@@ -184,7 +184,7 @@
                 <pre class="materiaux-list">{{ ch.preparation.materiaux }}</pre>
             </div>
             {% endif %}
-            {% elif ch.etape == 'a_preparer' %}
+            {% else %}
             <form method="post" action="/chantier/{{ ch.id }}/preparation" class="step-form">
                 <div class="form-row">
                     <div class="form-group">
@@ -221,18 +221,18 @@
         </section>
 
         <!-- Étape 2 : Commande matériaux (Julien) -->
-        <section class="detail-section step-section {{ 'step-done' if ch.commande.get('valide_par') else ('step-active' if ch.etape == 'a_commander' else 'step-locked') }}">
+        <section class="detail-section step-section {{ 'step-done' if ch.commande.get('valide_par') else 'step-active' }}">
             <div class="step-header">
                 <span class="step-badge" style="background: #f97316">2</span>
                 <h2>Commande matériaux</h2>
                 {% if ch.commande.get('valide_par') %}
                 <span class="step-status done">Validé par {{ ch.commande.valide_par }}</span>
-                {% elif ch.etape == 'a_commander' %}
+                {% else %}
                 <span class="step-status active">En attente</span>
                 {% endif %}
             </div>
 
-            {% if ch.preparation.get('materiaux') and ch.etape in ['a_commander', 'a_programmer', 'pret'] %}
+            {% if ch.preparation.get('materiaux') %}
             <div class="info-description">
                 <span class="info-label">Matériaux demandés par {{ ch.preparation.valide_par }}</span>
                 <pre class="materiaux-list">{{ ch.preparation.materiaux }}</pre>
@@ -250,7 +250,7 @@
                     <span class="info-value">{{ ch.commande.reference_commande or "—" }}</span>
                 </div>
             </div>
-            {% elif ch.etape == 'a_commander' %}
+            {% else %}
             <form method="post" action="/chantier/{{ ch.id }}/commande" class="step-form">
                 <div class="form-row">
                     <div class="form-group">
@@ -272,18 +272,18 @@
         </section>
 
         <!-- Étape 3 : Programmation (Gina/Charlotte) -->
-        <section class="detail-section step-section {{ 'step-done' if ch.programmation.get('valide_par') else ('step-active' if ch.etape == 'a_programmer' else 'step-locked') }}">
+        <section class="detail-section step-section {{ 'step-done' if ch.programmation.get('valide_par') else 'step-active' }}">
             <div class="step-header">
                 <span class="step-badge" style="background: #eab308">3</span>
                 <h2>Programmation</h2>
                 {% if ch.programmation.get('valide_par') %}
                 <span class="step-status done">Validé par {{ ch.programmation.valide_par }}</span>
-                {% elif ch.etape == 'a_programmer' %}
+                {% else %}
                 <span class="step-status active">En attente</span>
                 {% endif %}
             </div>
 
-            {% if ch.preparation.get('valide_par') and ch.etape in ['a_programmer', 'pret'] %}
+            {% if ch.preparation.get('valide_par') %}
             <div class="info-grid recap-grid">
                 <div class="info-item">
                     <span class="info-label">Durée</span>
@@ -311,7 +311,7 @@
                     <span class="info-value">{{ ch.programmation.date_debut or "—" }}</span>
                 </div>
             </div>
-            {% elif ch.etape == 'a_programmer' %}
+            {% else %}
             <form method="post" action="/chantier/{{ ch.id }}/programmation" class="step-form">
                 <div class="form-row">
                     <div class="form-group">

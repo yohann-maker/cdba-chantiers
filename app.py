@@ -427,6 +427,29 @@ def _extract_opp_data(opp):
 
 
 # ──────────────────────────────────────────────────────
+# CALCUL ÉTAPE (non séquentiel)
+# ──────────────────────────────────────────────────────
+
+def _compute_etape(ch):
+    """Calcule l'étape du chantier selon les validations faites (ordre libre)."""
+    has_prepa = bool(ch.get("preparation", {}).get("valide_par"))
+    has_commande = bool(ch.get("commande", {}).get("valide_par"))
+    has_prog = bool(ch.get("programmation", {}).get("valide_par"))
+
+    if has_prepa and has_commande and has_prog:
+        return "pret"
+
+    # Compter combien d'étapes sont validées
+    done = sum([has_prepa, has_commande, has_prog])
+    if done == 0:
+        return "en_cours"  # rien validé encore
+    if done >= 1 and not (has_prepa and has_commande and has_prog):
+        return "en_cours"  # partiellement validé
+
+    return "pret"
+
+
+# ──────────────────────────────────────────────────────
 # AUTH (cookies simples)
 # ──────────────────────────────────────────────────────
 
@@ -492,14 +515,14 @@ async def board(request: Request):
     chantiers = load_chantiers()
 
     colonnes = {
-        "a_preparer": {"label": "À préparer", "color": "#ef4444", "icon": "🔴", "chantiers": []},
-        "a_commander": {"label": "À commander", "color": "#f97316", "icon": "🟠", "chantiers": []},
-        "a_programmer": {"label": "À programmer", "color": "#eab308", "icon": "🟡", "chantiers": []},
+        "en_cours": {"label": "En cours", "color": "#f97316", "icon": "🟠", "chantiers": []},
         "pret": {"label": "Prêt", "color": "#22c55e", "icon": "🟢", "chantiers": []},
     }
 
     for ch in sorted(chantiers.values(), key=lambda x: x.get("created_at", ""), reverse=True):
-        etape = ch.get("etape", "a_preparer")
+        # Recalculer l'étape
+        etape = _compute_etape(ch)
+        ch["etape"] = etape
         if etape in colonnes:
             colonnes[etape]["chantiers"].append(ch)
 
@@ -558,7 +581,7 @@ async def save_preparation(
         "valide_par": user["name"],
         "valide_le": datetime.now().isoformat(),
     }
-    ch["etape"] = "a_commander"
+    ch["etape"] = _compute_etape(ch)
     ch["historique"].append({
         "action": f"Préparation validée ({nb_jours}j, {nb_personnes} pers.)",
         "par": user["name"],
@@ -593,7 +616,7 @@ async def save_commande(
         "valide_par": user["name"],
         "valide_le": datetime.now().isoformat(),
     }
-    ch["etape"] = "a_programmer"
+    ch["etape"] = _compute_etape(ch)
     ch["historique"].append({
         "action": "Commande matériaux validée",
         "par": user["name"],
@@ -628,7 +651,7 @@ async def save_programmation(
         "valide_par": user["name"],
         "valide_le": datetime.now().isoformat(),
     }
-    ch["etape"] = "pret"
+    ch["etape"] = _compute_etape(ch)
     ch["historique"].append({
         "action": f"Programmé semaine {semaine}" if semaine else "Programmé",
         "par": user["name"],
