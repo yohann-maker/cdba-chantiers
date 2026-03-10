@@ -1258,6 +1258,35 @@ async def upload_photos(
     return RedirectResponse(f"/chantier/{chantier_id}", status_code=302)
 
 
+@app.post("/chantier/{chantier_id}/reset/{step}")
+async def reset_step(request: Request, chantier_id: str, step: str):
+    user = get_current_user(request)
+    if not user:
+        raise HTTPException(401)
+
+    if step not in ("preparation", "commande", "programmation"):
+        raise HTTPException(400, "Étape invalide")
+
+    chantiers = load_chantiers()
+    ch = chantiers.get(chantier_id)
+    if not ch:
+        raise HTTPException(404)
+
+    old_data = ch.get(step, {})
+    old_by = old_data.get("valide_par", "?")
+
+    ch[step] = {}
+    ch["etape"] = _compute_etape(ch)
+    ch["historique"].append({
+        "action": f"{step.capitalize()} réinitialisée (était validée par {old_by})",
+        "par": user["name"],
+        "date": datetime.now().isoformat(),
+    })
+
+    save_chantiers(chantiers)
+    return RedirectResponse(f"/chantier/{chantier_id}", status_code=302)
+
+
 @app.post("/sync")
 async def sync(request: Request):
     user = get_current_user(request)

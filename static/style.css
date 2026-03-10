@@ -752,6 +752,18 @@ body {
     color: var(--primary);
 }
 
+.btn-reset {
+    color: var(--text-muted);
+    font-size: 11px;
+    padding: 2px 8px;
+    opacity: 0.6;
+}
+
+.btn-reset:hover {
+    opacity: 1;
+    color: var(--orange);
+}
+
 .step-form {
     margin-top: 12px;
 }

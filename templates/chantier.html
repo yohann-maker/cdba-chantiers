@@ -158,6 +158,9 @@
                 <h2>Préparation technique</h2>
                 {% if ch.preparation.get('valide_par') %}
                 <span class="step-status done">Validé par {{ ch.preparation.valide_par }}</span>
+                <form method="post" action="/chantier/{{ ch.id }}/reset/preparation" style="display:inline; margin-left:8px;">
+                    <button type="submit" class="btn btn-small btn-ghost btn-reset">Modifier</button>
+                </form>
                 {% else %}
                 <span class="step-status active">En attente</span>
                 {% endif %}
@@ -227,6 +230,9 @@
                 <h2>Commande matériaux</h2>
                 {% if ch.commande.get('valide_par') %}
                 <span class="step-status done">Validé par {{ ch.commande.valide_par }}</span>
+                <form method="post" action="/chantier/{{ ch.id }}/reset/commande" style="display:inline; margin-left:8px;">
+                    <button type="submit" class="btn btn-small btn-ghost btn-reset">Modifier</button>
+                </form>
                 {% else %}
                 <span class="step-status active">En attente</span>
                 {% endif %}
@@ -278,6 +284,9 @@
                 <h2>Programmation</h2>
                 {% if ch.programmation.get('valide_par') %}
                 <span class="step-status done">Validé par {{ ch.programmation.valide_par }}</span>
+                <form method="post" action="/chantier/{{ ch.id }}/reset/programmation" style="display:inline; margin-left:8px;">
+                    <button type="submit" class="btn btn-small btn-ghost btn-reset">Modifier</button>
+                </form>
                 {% else %}
                 <span class="step-status active">En attente</span>
                 {% endif %}
