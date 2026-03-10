@@ -6,17 +6,22 @@ Workflow : Sellsy → William (prépa) → Julien (commande) → Gina/Charlotte 
 
 import json
 import os
+import re
 import hashlib
+import uuid
 import time
+import logging
 from datetime import datetime
 from pathlib import Path
 
-from fastapi import FastAPI, Request, Form, HTTPException, Response
+from fastapi import FastAPI, Request, Form, HTTPException, Response, UploadFile, File
 from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from requests_oauthlib import OAuth1Session
 import requests
+
+logger = logging.getLogger("cdba")
 
 # ──────────────────────────────────────────────────────
 # CONFIG
@@ -28,10 +33,13 @@ BASE_DIR = Path(__file__).parent
 TEMPLATES_DIR = BASE_DIR / "templates"
 STATIC_DIR = BASE_DIR / "static"
 DATA_DIR = BASE_DIR / "data"
+UPLOADS_DIR = DATA_DIR / "uploads"
 DATA_DIR.mkdir(exist_ok=True)
+UPLOADS_DIR.mkdir(exist_ok=True)
 
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
+app.mount("/uploads", StaticFiles(directory=str(UPLOADS_DIR)), name="uploads")
 
 # Utilisateurs et mots de passe (via variables d'environnement)
 USERS = {
@@ -49,6 +57,12 @@ SELLSY_CONFIG = {
     "consumer_secret": os.getenv("SELLSY_CONSUMER_SECRET", ""),
     "user_token": os.getenv("SELLSY_USER_TOKEN", ""),
     "user_secret": os.getenv("SELLSY_USER_SECRET", ""),
+}
+
+# Sellsy API v2 (OAuth2 Client Credentials) — pour les fichiers/photos
+SELLSY_V2_CONFIG = {
+    "client_id": os.getenv("SELLSY_V2_CLIENT_ID", ""),
+    "client_secret": os.getenv("SELLSY_V2_CLIENT_SECRET", ""),
 }
 
 # Étapes du pipeline Sellsy qu'on veut récupérer
@@ -107,6 +121,67 @@ def get_sellsy_client():
     return SellsyClient(SELLSY_CONFIG)
 
 
+class SellsyV2Client:
+    """Client pour l'API Sellsy v2 — utilisé pour récupérer les fichiers/photos."""
+
+    BASE_URL = "https://api.sellsy.com/v2"
+    TOKEN_URL = "https://login.sellsy.com/oauth2/access-tokens"
+
+    def __init__(self, config):
+        self.client_id = config.get("client_id", "")
+        self.client_secret = config.get("client_secret", "")
+        self._access_token = None
+        self._token_expiry = 0
+
+    def _ensure_token(self):
+        if self._access_token and time.time() < (self._token_expiry - 60):
+            return
+        resp = requests.post(self.TOKEN_URL, json={
+            "grant_type": "client_credentials",
+            "client_id": self.client_id,
+            "client_secret": self.client_secret,
+        })
+        if resp.status_code != 200:
+            raise Exception(f"OAuth2 error: {resp.text[:300]}")
+        data = resp.json()
+        self._access_token = data["access_token"]
+        self._token_expiry = time.time() + data.get("expires_in", 3600)
+
+    def get(self, endpoint):
+        self._ensure_token()
+        resp = requests.get(
+            f"{self.BASE_URL}{endpoint}",
+            headers={"Authorization": f"Bearer {self._access_token}"},
+        )
+        if resp.status_code != 200:
+            return None
+        return resp.json()
+
+    def get_opportunity_files(self, opp_id):
+        """Récupère les fichiers (photos, PDF) liés à une opportunité."""
+        data = self.get(f"/opportunities/{opp_id}/files")
+        if not data:
+            return []
+        files = []
+        for f in data.get("data", []):
+            ext = (f.get("extension", "") or "").lower()
+            files.append({
+                "name": f.get("name", ""),
+                "extension": ext,
+                "size": f.get("size", 0),
+                "public_link": f.get("public_link", ""),
+                "is_image": ext in ("jpg", "jpeg", "png", "webp", "heic"),
+                "created": f.get("created", ""),
+            })
+        return files
+
+
+def get_sellsy_v2_client():
+    if not SELLSY_V2_CONFIG["client_id"]:
+        return None
+    return SellsyV2Client(SELLSY_V2_CONFIG)
+
+
 # ──────────────────────────────────────────────────────
 # STOCKAGE LOCAL (JSON)
 # ──────────────────────────────────────────────────────
@@ -126,11 +201,93 @@ def save_chantiers(chantiers):
         json.dump(chantiers, f, indent=2, ensure_ascii=False)
 
 
+def _strip_html(text):
+    """Retire les balises HTML et nettoie le texte."""
+    if not text:
+        return ""
+    text = re.sub(r'<br\s*/?>', '\n', text)
+    text = re.sub(r'<[^>]+>', '', text)
+    text = text.replace('&amp;', '&').replace('&lt;', '<').replace('&gt;', '>').replace('&nbsp;', ' ')
+    return text.strip()
+
+
+def _fetch_devis_lines(client, doc_id):
+    """Récupère les lignes d'un devis Sellsy."""
+    try:
+        doc = client.call("Document.getOne", {"doctype": "estimate", "docid": doc_id})
+        rows = doc.get("map", {}).get("rows", {})
+        if isinstance(rows, dict):
+            rows = [v for v in rows.values() if isinstance(v, dict)]
+        elif not isinstance(rows, list):
+            rows = []
+
+        lines = []
+        for row in rows:
+            name = row.get("name", "")
+            if not name:
+                continue
+            qt_raw = row.get("qt", "0")
+            try:
+                qt = float(qt_raw)
+            except (ValueError, TypeError):
+                qt = 0
+            unit = row.get("unit", "")
+            notes = _strip_html(row.get("notes", ""))
+            unit_amount = row.get("unitAmount", "0")
+            try:
+                unit_amount = float(unit_amount)
+            except (ValueError, TypeError):
+                unit_amount = 0
+
+            lines.append({
+                "reference": name,
+                "description": notes,
+                "quantite": qt,
+                "unite": unit,
+                "prix_unitaire": unit_amount,
+            })
+        return lines
+    except Exception as e:
+        return [{"reference": "Erreur", "description": str(e), "quantite": 0, "unite": "", "prix_unitaire": 0}]
+
+
+def _fetch_opp_address(client, opp_id):
+    """Récupère l'adresse du chantier depuis l'opportunité."""
+    try:
+        resp = client.call("Opportunities.getOne", {"id": opp_id})
+        # Adresse dans thirdDetails ou contacts
+        third = resp.get("thirdDetails", {})
+        if isinstance(third, dict):
+            addr = third.get("address", third.get("addr", {}))
+            if isinstance(addr, dict):
+                parts = [
+                    addr.get("part1", ""),
+                    addr.get("part2", ""),
+                    f"{addr.get('zip', '')} {addr.get('town', '')}".strip(),
+                ]
+                address = ", ".join(p for p in parts if p)
+                if address:
+                    return address
+            # Try flat fields
+            parts = [
+                third.get("addressPart1", third.get("address", "")),
+                f"{third.get('addressZip', '')} {third.get('addressTown', '')}".strip(),
+            ]
+            address = ", ".join(p for p in parts if p)
+            if address:
+                return address
+        return ""
+    except Exception:
+        return ""
+
+
 def sync_from_sellsy():
-    """Synchronise les opportunités 'Chantier à programmer' depuis Sellsy."""
+    """Synchronise les opportunités chantier depuis Sellsy avec lignes de devis et fichiers."""
     client = get_sellsy_client()
     if not client:
         return {"error": "Sellsy non configuré"}
+
+    v2_client = get_sellsy_v2_client()
 
     chantiers = load_chantiers()
     nouvelles = 0
@@ -152,16 +309,61 @@ def sync_from_sellsy():
         # Si déjà dans notre base, on met à jour les infos Sellsy mais on garde les données saisies
         if opp_id in chantiers:
             chantiers[opp_id]["sellsy"] = _extract_opp_data(opp)
+            # Mettre à jour les fichiers Sellsy à chaque sync
+            if v2_client:
+                try:
+                    chantiers[opp_id]["sellsy_files"] = v2_client.get_opportunity_files(opp_id)
+                except Exception:
+                    pass
             continue
+
+        # Récupérer les détails enrichis
+        opp_data = _extract_opp_data(opp)
+
+        # Récupérer les lignes du devis principal
+        detail = None
+        try:
+            detail = client.call("Opportunities.getOne", {"id": opp_id})
+        except Exception:
+            pass
+
+        devis_lines = []
+        devis_ref = ""
+        if detail:
+            main_doc_id = detail.get("mainDocId")
+            if main_doc_id and str(main_doc_id) != "0":
+                devis_lines = _fetch_devis_lines(client, main_doc_id)
+                try:
+                    doc_info = client.call("Document.getOne", {"doctype": "estimate", "docid": main_doc_id})
+                    devis_ref = doc_info.get("ident", "")
+                except Exception:
+                    pass
+
+        # Récupérer l'adresse
+        address = _fetch_opp_address(client, opp_id)
+
+        opp_data["adresse"] = address
+        opp_data["devis_ref"] = devis_ref
+        opp_data["devis_lines"] = devis_lines
+
+        # Récupérer les fichiers/photos via API v2
+        sellsy_files = []
+        if v2_client:
+            try:
+                sellsy_files = v2_client.get_opportunity_files(opp_id)
+            except Exception as e:
+                logger.warning(f"Erreur fichiers opp {opp_id}: {e}")
 
         # Nouveau chantier
         chantiers[opp_id] = {
             "id": opp_id,
-            "sellsy": _extract_opp_data(opp),
+            "sellsy": opp_data,
+            "sellsy_files": sellsy_files,
             "etape": "a_preparer",
             "preparation": {},
             "commande": {},
             "programmation": {},
+            "photos": [],
             "historique": [{
                 "action": "Importé depuis Sellsy",
                 "par": "système",
@@ -177,14 +379,12 @@ def sync_from_sellsy():
 
 def _extract_opp_data(opp):
     """Extrait les données utiles d'une opportunité Sellsy."""
-    # Montant
     amount = opp.get("amount", opp.get("estimateAmount", 0))
     try:
         amount = float(amount)
     except (ValueError, TypeError):
         amount = 0
 
-    # Client
     client_name = opp.get("thirdName", opp.get("linkedName", ""))
     contact_name = opp.get("contactName", opp.get("contactFullName", ""))
 
@@ -265,7 +465,6 @@ async def board(request: Request):
 
     chantiers = load_chantiers()
 
-    # Organiser par étape
     colonnes = {
         "a_preparer": {"label": "À préparer", "color": "#ef4444", "icon": "🔴", "chantiers": []},
         "a_commander": {"label": "À commander", "color": "#f97316", "icon": "🟠", "chantiers": []},
@@ -370,7 +569,7 @@ async def save_commande(
     }
     ch["etape"] = "a_programmer"
     ch["historique"].append({
-        "action": f"Commande matériaux validée",
+        "action": "Commande matériaux validée",
         "par": user["name"],
         "date": datetime.now().isoformat(),
     })
@@ -406,6 +605,57 @@ async def save_programmation(
     ch["etape"] = "pret"
     ch["historique"].append({
         "action": f"Programmé semaine {semaine}" if semaine else "Programmé",
+        "par": user["name"],
+        "date": datetime.now().isoformat(),
+    })
+
+    save_chantiers(chantiers)
+    return RedirectResponse(f"/chantier/{chantier_id}", status_code=302)
+
+
+@app.post("/chantier/{chantier_id}/photos")
+async def upload_photos(
+    request: Request,
+    chantier_id: str,
+    photos: list[UploadFile] = File(...),
+):
+    user = get_current_user(request)
+    if not user:
+        raise HTTPException(401)
+
+    chantiers = load_chantiers()
+    ch = chantiers.get(chantier_id)
+    if not ch:
+        raise HTTPException(404)
+
+    if "photos" not in ch:
+        ch["photos"] = []
+
+    chantier_uploads = UPLOADS_DIR / chantier_id
+    chantier_uploads.mkdir(exist_ok=True)
+
+    for photo in photos:
+        if not photo.filename:
+            continue
+        ext = Path(photo.filename).suffix.lower()
+        if ext not in ('.jpg', '.jpeg', '.png', '.webp', '.heic'):
+            continue
+        file_id = uuid.uuid4().hex[:8]
+        filename = f"{file_id}{ext}"
+        filepath = chantier_uploads / filename
+        content = await photo.read()
+        with open(filepath, "wb") as f:
+            f.write(content)
+
+        ch["photos"].append({
+            "filename": filename,
+            "original_name": photo.filename,
+            "uploaded_by": user["name"],
+            "uploaded_at": datetime.now().isoformat(),
+        })
+
+    ch["historique"].append({
+        "action": f"{len(photos)} photo(s) ajoutée(s)",
         "par": user["name"],
         "date": datetime.now().isoformat(),
     })

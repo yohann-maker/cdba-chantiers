@@ -47,13 +47,109 @@
                     <span class="info-value">{{ ch.sellsy.step }}</span>
                 </div>
             </div>
-            {% if ch.sellsy.description %}
-            <div class="info-description">
-                <span class="info-label">Description</span>
-                <p>{{ ch.sellsy.description }}</p>
+            {% if ch.sellsy.get('adresse') %}
+            <div class="info-description" style="margin-top:12px">
+                <span class="info-label">Adresse chantier</span>
+                <p>{{ ch.sellsy.adresse }}</p>
             </div>
             {% endif %}
         </section>
+
+        <!-- Devis / Lignes de commande -->
+        {% if ch.sellsy.get('devis_lines') %}
+        <section class="detail-section">
+            <h2>Devis {{ ch.sellsy.get('devis_ref', '') }}</h2>
+            <div class="devis-table-wrapper">
+                <table class="devis-table">
+                    <thead>
+                        <tr>
+                            <th>Réf.</th>
+                            <th>Description</th>
+                            <th class="text-right">Qté</th>
+                            <th>Unité</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for line in ch.sellsy.devis_lines %}
+                        <tr>
+                            <td class="ref-cell">{{ line.reference }}</td>
+                            <td class="desc-cell">{{ line.description }}</td>
+                            <td class="text-right qty-cell">{{ "%.0f"|format(line.quantite) if line.quantite == line.quantite|int else "%.2f"|format(line.quantite) }}</td>
+                            <td>{{ line.unite }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </section>
+        {% endif %}
+
+        <!-- Fichiers Sellsy (photos + documents) -->
+        {% set sellsy_files = ch.get('sellsy_files', []) %}
+        {% set sellsy_images = [] %}
+        {% set sellsy_docs = [] %}
+        {% for f in sellsy_files %}
+            {% if f.is_image %}
+                {% set _ = sellsy_images.append(f) %}
+            {% else %}
+                {% set _ = sellsy_docs.append(f) %}
+            {% endif %}
+        {% endfor %}
+
+        <section class="detail-section">
+            <h2>Photos</h2>
+
+            {% if sellsy_images %}
+            <div class="subsection-label">Depuis Sellsy</div>
+            <div class="photos-grid">
+                {% for img in sellsy_images %}
+                <div class="photo-item">
+                    <img src="{{ img.public_link }}" alt="{{ img.name }}" loading="lazy" onclick="openPhoto(this.src)">
+                    <span class="photo-meta">{{ img.name }}.{{ img.extension }}</span>
+                </div>
+                {% endfor %}
+            </div>
+            {% endif %}
+
+            {% if ch.get('photos') %}
+            <div class="subsection-label">Ajoutées manuellement</div>
+            <div class="photos-grid">
+                {% for photo in ch.photos %}
+                <div class="photo-item">
+                    <img src="/uploads/{{ ch.id }}/{{ photo.filename }}" alt="{{ photo.original_name }}" loading="lazy" onclick="openPhoto(this.src)">
+                    <span class="photo-meta">{{ photo.uploaded_by }} — {{ photo.uploaded_at[:10] }}</span>
+                </div>
+                {% endfor %}
+            </div>
+            {% endif %}
+
+            {% if not sellsy_images and not ch.get('photos') %}
+            <p class="text-muted">Aucune photo disponible.</p>
+            {% endif %}
+
+            <form method="post" action="/chantier/{{ ch.id }}/photos" enctype="multipart/form-data" class="photo-upload-form">
+                <label for="photos" class="btn btn-outline btn-upload">
+                    Ajouter des photos
+                    <input type="file" id="photos" name="photos" multiple accept="image/*" capture="environment" style="display:none" onchange="this.form.submit()">
+                </label>
+            </form>
+        </section>
+
+        <!-- Documents Sellsy (PDF, etc.) -->
+        {% if sellsy_docs %}
+        <section class="detail-section">
+            <h2>Documents</h2>
+            <div class="docs-list">
+                {% for doc in sellsy_docs %}
+                <a href="{{ doc.public_link }}" target="_blank" class="doc-item">
+                    <span class="doc-icon">{{ doc.extension.upper() }}</span>
+                    <span class="doc-name">{{ doc.name }}.{{ doc.extension }}</span>
+                    <span class="doc-size">{{ (doc.size / 1024)|int }} ko</span>
+                </a>
+                {% endfor %}
+            </div>
+        </section>
+        {% endif %}
 
         <!-- Étape 1 : Préparation (William) -->
         <section class="detail-section step-section {{ 'step-done' if ch.preparation.get('valide_par') else ('step-active' if ch.etape == 'a_preparer' else 'step-locked') }}">
@@ -250,5 +346,16 @@
             </div>
         </section>
     </main>
+
+    <!-- Lightbox photos -->
+    <div id="lightbox" class="lightbox" onclick="this.style.display='none'">
+        <img id="lightbox-img" src="" alt="">
+    </div>
+    <script>
+    function openPhoto(src) {
+        document.getElementById('lightbox-img').src = src;
+        document.getElementById('lightbox').style.display = 'flex';
+    }
+    </script>
 </body>
 </html>
