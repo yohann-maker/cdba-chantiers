@@ -52,7 +52,7 @@ SELLSY_CONFIG = {
 }
 
 # Étapes du pipeline Sellsy qu'on veut récupérer
-ETAPES_CHANTIER = ["Chantier à programmer", "Chantier programmé"]
+ETAPES_CHANTIER = ["📆 Chantier à programmer", "👷🏼 Chantier à réaliser"]
 
 # Équipe production
 EQUIPE_PRODUCTION = ["William", "Geoffrey", "Romain"]
