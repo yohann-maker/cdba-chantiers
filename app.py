@@ -907,14 +907,21 @@ async def save_programmation(
 
 
 def _update_weekly_recap(ch):
-    """Met à jour l'event récap 📊 du samedi correspondant à la semaine du chantier."""
+    """Met à jour l'event récap 📊 du samedi de la semaine de FIN du chantier.
+
+    Règle : chantiers multi-semaines comptés dans la semaine de FIN.
+    Format titre : 📊 Récap S{num} — {total} € HT
+    Format description : une ligne par chantier (CLIENT : montant € HT)
+    """
     gcal = get_gcal_client()
     if not gcal:
         return
 
     programmation = ch.get("programmation", {})
+    preparation = ch.get("preparation", {})
     date_debut = programmation.get("date_debut", "")
     montant = ch.get("sellsy", {}).get("montant", 0)
+    nb_jours = preparation.get("nb_jours", 1)
     if not date_debut or not montant:
         return
 
@@ -923,14 +930,20 @@ def _update_weekly_recap(ch):
     except ValueError:
         return
 
-    # Trouver le samedi de cette semaine
-    days_to_saturday = (5 - start.weekday()) % 7
-    saturday = start + timedelta(days=days_to_saturday)
+    # Date de fin du chantier (dernier jour ouvré)
+    end = start + timedelta(days=max(nb_jours - 1, 0))
+
+    # Trouver le samedi de la semaine de FIN
+    days_to_saturday = (5 - end.weekday()) % 7
+    if days_to_saturday == 0 and end.weekday() != 5:
+        days_to_saturday = 7  # si dimanche, samedi suivant
+    saturday = end + timedelta(days=days_to_saturday)
     sat_str = saturday.strftime("%Y-%m-%d")
     sun_str = (saturday + timedelta(days=1)).strftime("%Y-%m-%d")
+    week_num = saturday.isocalendar()[1]
 
-    # Calendrier Yohann pour les récaps
     yohann_cal = "yohann@groupe-cdba.fr"
+    client_name = ch.get("sellsy", {}).get("client", "")
 
     # Chercher un event 📊 existant ce samedi
     existing = gcal.search_events(
@@ -945,26 +958,53 @@ def _update_weekly_recap(ch):
             recap_event = ev
             break
 
+    new_line = f"{client_name} : {montant:.0f} € HT"
+
     if recap_event:
-        # Lire le montant actuel depuis la description et ajouter
+        # Mettre à jour l'event existant
         desc = recap_event.get("description", "")
-        client_name = ch.get("sellsy", {}).get("client", "")
-        new_line = f"\n+ {client_name} : {montant:.0f} € HT"
-        updated_desc = desc + new_line
 
-        # Recalculer le total
-        import re as _re
-        amounts = _re.findall(r"([\d\s]+)\s*€\s*HT", updated_desc.replace(" ", ""))
-        # Extraire le total existant du titre
-        title = recap_event.get("summary", "")
+        # Éviter les doublons (si même client déjà listé)
+        if client_name and client_name in desc:
+            return
 
-        # Mettre à jour via PATCH
+        # Ajouter la nouvelle ligne
+        lines = [l.strip() for l in desc.strip().split("\n") if l.strip()]
+        lines.append(new_line)
+
+        # Recalculer le total depuis toutes les lignes
+        total = 0
+        for line in lines:
+            match = re.search(r"([\d\s]+)\s*€", line.replace("\u202f", "").replace(" ", ""))
+            if match:
+                try:
+                    total += int(match.group(1).replace(" ", ""))
+                except ValueError:
+                    pass
+
+        updated_title = f"📊 Récap S{week_num} — {total:,.0f} € HT".replace(",", " ")
+        updated_desc = "\n".join(lines)
+
         event_id = recap_event["id"]
         try:
-            resp = requests.patch(
+            requests.patch(
                 f"{gcal.API_BASE}/calendars/{yohann_cal}/events/{event_id}",
                 headers={**gcal._headers(), "Content-Type": "application/json"},
-                json={"description": updated_desc},
+                json={"summary": updated_title, "description": updated_desc},
+            )
+        except Exception:
+            pass
+
+    else:
+        # Créer un nouvel event récap 📊
+        title = f"📊 Récap S{week_num} — {montant:,.0f} € HT".replace(",", " ")
+        try:
+            gcal.create_event(
+                calendar_id=yohann_cal,
+                summary=title,
+                start_date=sat_str,
+                end_date=sun_str,
+                description=new_line,
             )
         except Exception:
             pass
