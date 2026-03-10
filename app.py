@@ -11,7 +11,7 @@ import hashlib
 import uuid
 import time
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 from fastapi import FastAPI, Request, Form, HTTPException, Response, UploadFile, File
@@ -71,6 +71,201 @@ ETAPES_CHANTIER = ["📆 Chantier à programmer", "👷🏼 Chantier à réalise
 
 # Équipe production
 EQUIPE_PRODUCTION = ["William", "Geoffrey", "Romain", "Julien", "Didier", "Sous-traitant"]
+
+# Google Calendar OAuth2 (refresh token)
+GOOGLE_CAL_CONFIG = {
+    "client_id": os.getenv("GOOGLE_CLIENT_ID", ""),
+    "client_secret": os.getenv("GOOGLE_CLIENT_SECRET", ""),
+    "refresh_token": os.getenv("GOOGLE_REFRESH_TOKEN", ""),
+}
+
+# Calendriers des ouvriers
+CALENDRIERS_OUVRIERS = {
+    "William": "william@groupe-cdba.fr",
+    "Geoffrey": "geoffrey@groupe-cdba.fr",
+    "Romain": "romain@groupe-cdba.fr",
+    "Didier": "didier@groupe-cdba.fr",
+    "Julien": "julien@groupe-cdba.fr",
+    "Sous-traitant": "c_d274260d63816cecc49f51912e95ee01fc365affee0d574df96612495d178d82@group.calendar.google.com",
+}
+
+
+# ──────────────────────────────────────────────────────
+# GOOGLE CALENDAR CLIENT
+# ──────────────────────────────────────────────────────
+
+class GoogleCalendarClient:
+    TOKEN_URL = "https://oauth2.googleapis.com/token"
+    API_BASE = "https://www.googleapis.com/calendar/v3"
+
+    def __init__(self, config):
+        self.client_id = config["client_id"]
+        self.client_secret = config["client_secret"]
+        self.refresh_token = config["refresh_token"]
+        self._access_token = None
+        self._token_expiry = 0
+
+    def _ensure_token(self):
+        if self._access_token and time.time() < (self._token_expiry - 60):
+            return
+        resp = requests.post(self.TOKEN_URL, data={
+            "client_id": self.client_id,
+            "client_secret": self.client_secret,
+            "refresh_token": self.refresh_token,
+            "grant_type": "refresh_token",
+        })
+        if resp.status_code != 200:
+            raise Exception(f"Google OAuth error: {resp.text[:300]}")
+        data = resp.json()
+        self._access_token = data["access_token"]
+        self._token_expiry = time.time() + data.get("expires_in", 3600)
+
+    def _headers(self):
+        self._ensure_token()
+        return {"Authorization": f"Bearer {self._access_token}"}
+
+    def search_events(self, calendar_id, query, time_min=None, time_max=None):
+        """Cherche des events dans un calendrier par mot-clé."""
+        if not time_min:
+            time_min = datetime.utcnow().strftime("%Y-%m-%dT00:00:00Z")
+        if not time_max:
+            time_max = (datetime.utcnow() + timedelta(weeks=8)).strftime("%Y-%m-%dT23:59:59Z")
+        params = {
+            "q": query,
+            "timeMin": time_min,
+            "timeMax": time_max,
+            "singleEvents": "true",
+            "maxResults": 50,
+        }
+        resp = requests.get(
+            f"{self.API_BASE}/calendars/{calendar_id}/events",
+            headers=self._headers(),
+            params=params,
+        )
+        if resp.status_code != 200:
+            logger.warning(f"Google Calendar search error ({calendar_id}): {resp.status_code}")
+            return []
+        return resp.json().get("items", [])
+
+    def create_event(self, calendar_id, summary, start_date, end_date, description="", location=""):
+        """Crée un event journée entière."""
+        event = {
+            "summary": summary,
+            "start": {"date": start_date},
+            "end": {"date": end_date},
+        }
+        if description:
+            event["description"] = description
+        if location:
+            event["location"] = location
+        resp = requests.post(
+            f"{self.API_BASE}/calendars/{calendar_id}/events",
+            headers={**self._headers(), "Content-Type": "application/json"},
+            json=event,
+        )
+        if resp.status_code not in (200, 201):
+            raise Exception(f"Google Calendar create error: {resp.status_code} {resp.text[:300]}")
+        return resp.json()
+
+
+def get_gcal_client():
+    if not GOOGLE_CAL_CONFIG["refresh_token"]:
+        return None
+    return GoogleCalendarClient(GOOGLE_CAL_CONFIG)
+
+
+def _extract_client_nom(client_name):
+    """Extrait le nom de famille pour la détection de doublons."""
+    if not client_name:
+        return ""
+    parts = client_name.strip().split()
+    # Prend le dernier mot comme nom de famille, ou le premier si c'est en MAJUSCULES
+    for part in parts:
+        if part == part.upper() and len(part) > 2:
+            return part
+    return parts[-1] if parts else ""
+
+
+def _build_event_title(ch):
+    """Construit le titre de l'event Calendar : 🤖 NOM Client / Type travaux."""
+    client = ch.get("sellsy", {}).get("client", "")
+    nom_opp = ch.get("sellsy", {}).get("nom", "")
+    return f"🤖 {client} / {nom_opp}"
+
+
+def create_calendar_events(ch):
+    """Crée les events Google Calendar pour un chantier programmé.
+
+    Retourne le nombre d'events créés et les éventuels doublons détectés.
+    """
+    gcal = get_gcal_client()
+    if not gcal:
+        return 0, ["Google Calendar non configuré"]
+
+    preparation = ch.get("preparation", {})
+    programmation = ch.get("programmation", {})
+    sellsy = ch.get("sellsy", {})
+
+    equipe = preparation.get("equipe", [])
+    nb_jours = preparation.get("nb_jours", 1)
+    date_debut = programmation.get("date_debut", "")
+
+    if not equipe or not date_debut:
+        return 0, ["Équipe ou date de début manquante"]
+
+    # Calculer date de fin (all-day events : end = jour APRÈS le dernier jour)
+    try:
+        start = datetime.strptime(date_debut, "%Y-%m-%d")
+        end = start + timedelta(days=nb_jours)
+        end_date = end.strftime("%Y-%m-%d")
+    except ValueError:
+        return 0, [f"Format de date invalide : {date_debut}"]
+
+    # Préparer le contenu
+    title = _build_event_title(ch)
+    client_name = sellsy.get("client", "")
+    montant = sellsy.get("montant", 0)
+    contact = sellsy.get("contact", "")
+    adresse = sellsy.get("adresse", "")
+    description = f"Montant : {montant:.0f} € HT"
+    if contact:
+        description = f"Contact : {contact}\n{description}"
+
+    # Détection doublons + création
+    nom_recherche = _extract_client_nom(client_name)
+    created = 0
+    messages = []
+
+    for membre in equipe:
+        cal_id = CALENDRIERS_OUVRIERS.get(membre)
+        if not cal_id:
+            messages.append(f"{membre} : pas de calendrier configuré")
+            continue
+
+        # Vérifier doublon
+        if nom_recherche:
+            existing = gcal.search_events(cal_id, nom_recherche)
+            if existing:
+                event_titles = [e.get("summary", "") for e in existing]
+                messages.append(f"{membre} : doublon détecté ({nom_recherche}) → {event_titles[0]}")
+                continue
+
+        # Créer l'event
+        try:
+            gcal.create_event(
+                calendar_id=cal_id,
+                summary=title,
+                start_date=date_debut,
+                end_date=end_date,
+                description=description,
+                location=adresse,
+            )
+            created += 1
+        except Exception as e:
+            messages.append(f"{membre} : erreur création → {str(e)[:100]}")
+
+    return created, messages
+
 
 # ──────────────────────────────────────────────────────
 # SELLSY CLIENT
@@ -683,8 +878,96 @@ async def save_programmation(
         "date": datetime.now().isoformat(),
     })
 
+    # Auto-création Google Calendar si Gina valide ET préparation faite (équipe connue)
+    if user["username"] == "gina" and ch.get("preparation", {}).get("equipe") and date_debut:
+        try:
+            created, messages = create_calendar_events(ch)
+            cal_action = f"Agenda : {created} event(s) créé(s)"
+            if messages:
+                cal_action += f" — {'; '.join(messages)}"
+            ch["historique"].append({
+                "action": cal_action,
+                "par": "système",
+                "date": datetime.now().isoformat(),
+            })
+            # Mise à jour du récap hebdo 📊
+            try:
+                _update_weekly_recap(ch)
+            except Exception as e:
+                logger.warning(f"Erreur MAJ récap hebdo : {e}")
+        except Exception as e:
+            ch["historique"].append({
+                "action": f"Erreur création agenda : {str(e)[:100]}",
+                "par": "système",
+                "date": datetime.now().isoformat(),
+            })
+
     save_chantiers(chantiers)
     return RedirectResponse(f"/chantier/{chantier_id}", status_code=302)
+
+
+def _update_weekly_recap(ch):
+    """Met à jour l'event récap 📊 du samedi correspondant à la semaine du chantier."""
+    gcal = get_gcal_client()
+    if not gcal:
+        return
+
+    programmation = ch.get("programmation", {})
+    date_debut = programmation.get("date_debut", "")
+    montant = ch.get("sellsy", {}).get("montant", 0)
+    if not date_debut or not montant:
+        return
+
+    try:
+        start = datetime.strptime(date_debut, "%Y-%m-%d")
+    except ValueError:
+        return
+
+    # Trouver le samedi de cette semaine
+    days_to_saturday = (5 - start.weekday()) % 7
+    saturday = start + timedelta(days=days_to_saturday)
+    sat_str = saturday.strftime("%Y-%m-%d")
+    sun_str = (saturday + timedelta(days=1)).strftime("%Y-%m-%d")
+
+    # Calendrier Yohann pour les récaps
+    yohann_cal = "yohann@groupe-cdba.fr"
+
+    # Chercher un event 📊 existant ce samedi
+    existing = gcal.search_events(
+        yohann_cal, "📊",
+        time_min=f"{sat_str}T00:00:00Z",
+        time_max=f"{sun_str}T00:00:00Z",
+    )
+
+    recap_event = None
+    for ev in existing:
+        if "📊" in ev.get("summary", ""):
+            recap_event = ev
+            break
+
+    if recap_event:
+        # Lire le montant actuel depuis la description et ajouter
+        desc = recap_event.get("description", "")
+        client_name = ch.get("sellsy", {}).get("client", "")
+        new_line = f"\n+ {client_name} : {montant:.0f} € HT"
+        updated_desc = desc + new_line
+
+        # Recalculer le total
+        import re as _re
+        amounts = _re.findall(r"([\d\s]+)\s*€\s*HT", updated_desc.replace(" ", ""))
+        # Extraire le total existant du titre
+        title = recap_event.get("summary", "")
+
+        # Mettre à jour via PATCH
+        event_id = recap_event["id"]
+        try:
+            resp = requests.patch(
+                f"{gcal.API_BASE}/calendars/{yohann_cal}/events/{event_id}",
+                headers={**gcal._headers(), "Content-Type": "application/json"},
+                json={"description": updated_desc},
+            )
+        except Exception:
+            pass
 
 
 @app.post("/chantier/{chantier_id}/photos")
