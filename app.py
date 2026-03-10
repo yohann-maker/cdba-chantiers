@@ -70,7 +70,7 @@ SELLSY_V2_CONFIG = {
 ETAPES_CHANTIER = ["📆 Chantier à programmer", "👷🏼 Chantier à réaliser"]
 
 # Équipe production
-EQUIPE_PRODUCTION = ["William", "Geoffrey", "Romain"]
+EQUIPE_PRODUCTION = ["William", "Geoffrey", "Romain", "Julien", "Didier", "Sous-traitant"]
 
 # ──────────────────────────────────────────────────────
 # SELLSY CLIENT
