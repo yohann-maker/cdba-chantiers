@@ -30,7 +30,22 @@
             </div>
             <div class="column-cards">
                 {% for ch in col.chantiers %}
-                <a href="/chantier/{{ ch.id }}" class="card">
+                {% set my_todo = false %}
+                {% if user.username in ['william'] and not ch.preparation.get('valide_par') %}
+                    {% set my_todo = true %}
+                {% elif user.username in ['julien'] and not ch.commande.get('valide_par') %}
+                    {% set my_todo = true %}
+                {% elif user.username in ['gina', 'charlotte'] and not ch.programmation.get('valide_par') %}
+                    {% set my_todo = true %}
+                {% elif user.username in ['yohann', 'olivier'] %}
+                    {% set my_todo = not ch.preparation.get('valide_par') or not ch.commande.get('valide_par') or not ch.programmation.get('valide_par') %}
+                {% endif %}
+                <a href="/chantier/{{ ch.id }}" class="card {{ 'card-todo' if my_todo else 'card-done-user' }}">
+                    {% if my_todo %}
+                    <div class="card-todo-badge">À FAIRE</div>
+                    {% else %}
+                    <div class="card-done-badge">Fait</div>
+                    {% endif %}
                     <div class="card-title">{{ ch.sellsy.client or ch.sellsy.nom }}</div>
                     <div class="card-subtitle">{{ ch.sellsy.nom }}</div>
                     <div class="card-meta">
