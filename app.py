@@ -379,7 +379,7 @@ def sync_from_sellsy():
 
 def _extract_opp_data(opp):
     """Extrait les données utiles d'une opportunité Sellsy."""
-    amount = opp.get("amount", opp.get("estimateAmount", 0))
+    amount = opp.get("potential", opp.get("amount", opp.get("estimateAmount", 0)))
     try:
         amount = float(amount)
     except (ValueError, TypeError):
