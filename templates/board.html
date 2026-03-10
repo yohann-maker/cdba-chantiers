@@ -5,6 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>CDBA — Tableau Chantiers</title>
     <link rel="stylesheet" href="/static/style.css">
+    {% if syncing %}
+    <meta http-equiv="refresh" content="5">
+    {% endif %}
 </head>
 <body>
     <header class="topbar">
@@ -12,9 +15,13 @@
             <h1 class="topbar-title">CDBA Chantiers</h1>
         </div>
         <div class="topbar-right">
+            {% if syncing %}
+            <span class="sync-badge">Sync en cours...</span>
+            {% else %}
             <form method="post" action="/sync" style="display:inline">
                 <button type="submit" class="btn btn-small btn-outline" title="Synchroniser avec Sellsy">Sync Sellsy</button>
             </form>
+            {% endif %}
             <span class="user-badge">{{ user.name }}</span>
             <a href="/logout" class="btn btn-small btn-ghost">Quitter</a>
         </div>

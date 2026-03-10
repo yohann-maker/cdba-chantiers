@@ -11,6 +11,7 @@ import hashlib
 import uuid
 import time
 import logging
+import threading
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -745,6 +746,8 @@ async def logout():
 
 LAST_SYNC_FILE = DATA_DIR / "last_sync.txt"
 SYNC_INTERVAL = 900  # 15 minutes
+_sync_lock = threading.Lock()
+_sync_running = False
 
 
 def _should_auto_sync():
@@ -762,18 +765,34 @@ def _record_sync():
     LAST_SYNC_FILE.write_text(str(time.time()))
 
 
+def _background_sync():
+    """Lance le sync Sellsy en arrière-plan."""
+    global _sync_running
+    try:
+        _sync_running = True
+        sync_from_sellsy()
+        _record_sync()
+    except Exception as e:
+        logger.warning(f"Erreur sync arrière-plan : {e}")
+    finally:
+        _sync_running = False
+
+
 @app.get("/board", response_class=HTMLResponse)
 async def board(request: Request):
     user = get_current_user(request)
     if not user:
         return RedirectResponse("/login", status_code=302)
 
-    # Auto-sync si dernier sync > 15 min
-    if _should_auto_sync():
-        sync_from_sellsy()
-        _record_sync()
+    # Auto-sync en arrière-plan (ne bloque PAS la page)
+    if _should_auto_sync() and not _sync_running:
+        with _sync_lock:
+            if not _sync_running:
+                thread = threading.Thread(target=_background_sync, daemon=True)
+                thread.start()
 
     chantiers = load_chantiers()
+    syncing = _sync_running
 
     colonnes = {
         "en_cours": {"label": "En cours", "color": "#f97316", "icon": "🟠", "chantiers": []},
@@ -792,6 +811,7 @@ async def board(request: Request):
         "user": user,
         "colonnes": colonnes,
         "equipe": EQUIPE_PRODUCTION,
+        "syncing": syncing,
     })
 
 
@@ -1243,7 +1263,12 @@ async def sync(request: Request):
     user = get_current_user(request)
     if not user:
         raise HTTPException(401)
-    result = sync_from_sellsy()
+    # Sync en arrière-plan
+    if not _sync_running:
+        with _sync_lock:
+            if not _sync_running:
+                thread = threading.Thread(target=_background_sync, daemon=True)
+                thread.start()
     return RedirectResponse("/board", status_code=302)
 
 

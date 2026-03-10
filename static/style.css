@@ -239,6 +239,21 @@ body {
     font-weight: 600;
 }
 
+.sync-badge {
+    background: rgba(249, 115, 22, 0.2);
+    color: var(--orange);
+    padding: 4px 12px;
+    border-radius: 20px;
+    font-size: 12px;
+    font-weight: 600;
+    animation: pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+}
+
 /* ── Board (Kanban) ── */
 
 .board {
