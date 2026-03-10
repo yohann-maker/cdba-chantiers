@@ -847,11 +847,117 @@ async def save_commande(
     return RedirectResponse(f"/chantier/{chantier_id}", status_code=302)
 
 
+def _get_busy_dates(gcal, calendar_id, weeks=8):
+    """Récupère les dates occupées d'un calendrier sur les N prochaines semaines."""
+    now = datetime.utcnow()
+    time_min = now.strftime("%Y-%m-%dT00:00:00Z")
+    time_max = (now + timedelta(weeks=weeks)).strftime("%Y-%m-%dT23:59:59Z")
+
+    busy = set()
+    try:
+        params = {
+            "timeMin": time_min,
+            "timeMax": time_max,
+            "singleEvents": "true",
+            "maxResults": 250,
+        }
+        resp = requests.get(
+            f"{gcal.API_BASE}/calendars/{calendar_id}/events",
+            headers=gcal._headers(),
+            params=params,
+        )
+        if resp.status_code != 200:
+            return busy
+        for ev in resp.json().get("items", []):
+            start = ev.get("start", {})
+            end = ev.get("end", {})
+            # Event journée entière
+            if "date" in start:
+                s = datetime.strptime(start["date"], "%Y-%m-%d")
+                e = datetime.strptime(end["date"], "%Y-%m-%d")
+                d = s
+                while d < e:
+                    busy.add(d.strftime("%Y-%m-%d"))
+                    d += timedelta(days=1)
+            # Event avec horaire (on bloque la journée)
+            elif "dateTime" in start:
+                dt = start["dateTime"][:10]
+                busy.add(dt)
+    except Exception:
+        pass
+    return busy
+
+
+# Jours fériés France 2026
+JOURS_FERIES_2026 = {
+    "2026-01-01", "2026-04-06", "2026-04-07", "2026-05-01", "2026-05-08",
+    "2026-05-14", "2026-05-25", "2026-07-14", "2026-08-15", "2026-11-01",
+    "2026-11-11", "2026-12-25",
+}
+
+
+def _find_earliest_slot(equipe, nb_jours):
+    """Trouve le premier créneau de nb_jours consécutifs (lun-ven) où toute l'équipe est libre.
+
+    Commence à chercher à partir de demain, sur 8 semaines.
+    Retourne la date de début (str YYYY-MM-DD) ou None.
+    """
+    gcal = get_gcal_client()
+    if not gcal:
+        return None
+
+    # Collecter les dates occupées pour chaque membre de l'équipe
+    all_busy = set()
+    for membre in equipe:
+        cal_id = CALENDRIERS_OUVRIERS.get(membre)
+        if not cal_id:
+            continue
+        busy = _get_busy_dates(gcal, cal_id)
+        all_busy |= busy  # Union : une date est bloquée si UN SEUL membre est occupé
+
+    # Chercher le premier créneau libre
+    today = datetime.now()
+    # Commencer au prochain jour ouvré (min demain)
+    candidate = today + timedelta(days=1)
+
+    for _ in range(56):  # 8 semaines max
+        # Vérifier que nb_jours consécutifs sont libres
+        slot_ok = True
+        check_date = candidate
+        days_found = 0
+
+        while days_found < nb_jours:
+            date_str = check_date.strftime("%Y-%m-%d")
+
+            # Sauter week-end et fériés
+            if check_date.weekday() >= 5 or date_str in JOURS_FERIES_2026:
+                check_date += timedelta(days=1)
+                continue
+
+            if date_str in all_busy:
+                slot_ok = False
+                break
+
+            days_found += 1
+            if days_found < nb_jours:
+                check_date += timedelta(days=1)
+
+        if slot_ok:
+            return candidate.strftime("%Y-%m-%d")
+
+        # Passer au jour ouvré suivant
+        candidate += timedelta(days=1)
+        while candidate.weekday() >= 5 or candidate.strftime("%Y-%m-%d") in JOURS_FERIES_2026:
+            candidate += timedelta(days=1)
+
+    return None
+
+
 @app.post("/chantier/{chantier_id}/programmation")
 async def save_programmation(
     request: Request,
     chantier_id: str,
-    semaine: str = Form(""),
+    mode: str = Form("auto"),
     date_debut: str = Form(""),
     notes: str = Form(""),
 ):
@@ -864,22 +970,53 @@ async def save_programmation(
     if not ch:
         raise HTTPException(404)
 
+    equipe = ch.get("preparation", {}).get("equipe", [])
+    nb_jours = ch.get("preparation", {}).get("nb_jours", 1)
+
+    # Mode auto : trouver le premier créneau libre
+    if mode == "auto" and equipe:
+        found_date = _find_earliest_slot(equipe, nb_jours)
+        if found_date:
+            date_debut = found_date
+        else:
+            ch["historique"].append({
+                "action": "Programmation auto : aucun créneau trouvé sur 8 semaines",
+                "par": "système",
+                "date": datetime.now().isoformat(),
+            })
+            save_chantiers(chantiers)
+            return RedirectResponse(f"/chantier/{chantier_id}", status_code=302)
+
+    if not date_debut:
+        # Fallback : pas de date fournie et pas d'auto
+        save_chantiers(chantiers)
+        return RedirectResponse(f"/chantier/{chantier_id}", status_code=302)
+
+    try:
+        start_dt = datetime.strptime(date_debut, "%Y-%m-%d")
+        semaine = str(start_dt.isocalendar()[1])
+    except ValueError:
+        semaine = ""
+
     ch["programmation"] = {
         "semaine": semaine,
         "date_debut": date_debut,
+        "mode": mode,
         "notes": notes,
         "valide_par": user["name"],
         "valide_le": datetime.now().isoformat(),
     }
     ch["etape"] = _compute_etape(ch)
+
+    action_label = f"Programmé auto S{semaine} ({date_debut})" if mode == "auto" else f"Programmé manuellement S{semaine}"
     ch["historique"].append({
-        "action": f"Programmé semaine {semaine}" if semaine else "Programmé",
+        "action": action_label,
         "par": user["name"],
         "date": datetime.now().isoformat(),
     })
 
-    # Auto-création Google Calendar si Gina valide ET préparation faite (équipe connue)
-    if user["username"] == "gina" and ch.get("preparation", {}).get("equipe") and date_debut:
+    # Création Google Calendar + récap (tous les utilisateurs autorisés, pas que Gina)
+    if equipe and date_debut:
         try:
             created, messages = create_calendar_events(ch)
             cal_action = f"Agenda : {created} event(s) créé(s)"
@@ -890,7 +1027,6 @@ async def save_programmation(
                 "par": "système",
                 "date": datetime.now().isoformat(),
             })
-            # Mise à jour du récap hebdo 📊
             try:
                 _update_weekly_recap(ch)
             except Exception as e:

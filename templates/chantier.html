@@ -312,23 +312,30 @@
                 </div>
             </div>
             {% else %}
+            {% if ch.preparation.get('equipe') %}
             <form method="post" action="/chantier/{{ ch.id }}/programmation" class="step-form">
-                <div class="form-row">
-                    <div class="form-group">
-                        <label for="semaine">Semaine</label>
-                        <input type="text" id="semaine" name="semaine" placeholder="Ex: 14">
+                <input type="hidden" name="mode" value="auto">
+                <button type="submit" class="btn btn-primary btn-full" style="font-size:16px; padding:14px;">
+                    Programmer automatiquement
+                </button>
+                <details style="margin-top:12px;">
+                    <summary class="text-muted" style="cursor:pointer; font-size:13px;">Forcer une date manuellement</summary>
+                    <div class="form-row" style="margin-top:10px;">
+                        <div class="form-group">
+                            <label for="date_debut">Date de début</label>
+                            <input type="date" id="date_debut" name="date_debut">
+                        </div>
                     </div>
                     <div class="form-group">
-                        <label for="date_debut">Date de début</label>
-                        <input type="date" id="date_debut" name="date_debut">
+                        <label for="notes">Notes</label>
+                        <textarea id="notes" name="notes" rows="2" placeholder="Remarques planning..."></textarea>
                     </div>
-                </div>
-                <div class="form-group">
-                    <label for="notes">Notes</label>
-                    <textarea id="notes" name="notes" rows="2" placeholder="Remarques planning..."></textarea>
-                </div>
-                <button type="submit" class="btn btn-primary">Valider la programmation</button>
+                    <button type="submit" class="btn btn-outline" onclick="this.form.querySelector('[name=mode]').value='manual'">Programmer à cette date</button>
+                </details>
             </form>
+            {% else %}
+            <p class="text-muted">En attente de la préparation (équipe + durée) pour programmer automatiquement.</p>
+            {% endif %}
             {% endif %}
         </section>
 
