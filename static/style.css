@@ -331,6 +331,13 @@ body {
     margin-bottom: 2px;
 }
 
+.card-ville {
+    font-size: 11px;
+    font-weight: 400;
+    color: var(--text-muted);
+    margin-left: 4px;
+}
+
 .card-subtitle {
     font-size: 12px;
     color: var(--text-muted);

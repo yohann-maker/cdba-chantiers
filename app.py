@@ -474,33 +474,38 @@ def _fetch_devis_lines(client, doc_id):
 
 
 def _fetch_opp_address(client, opp_id):
-    """Récupère l'adresse du chantier depuis l'opportunité."""
+    """Récupère l'adresse du chantier depuis l'opportunité.
+    Retourne (adresse_complete, ville, cp).
+    """
     try:
         resp = client.call("Opportunities.getOne", {"id": opp_id})
-        # Adresse dans thirdDetails ou contacts
         third = resp.get("thirdDetails", {})
         if isinstance(third, dict):
             addr = third.get("address", third.get("addr", {}))
             if isinstance(addr, dict):
+                zip_code = addr.get("zip", "")
+                town = addr.get("town", "")
                 parts = [
                     addr.get("part1", ""),
                     addr.get("part2", ""),
-                    f"{addr.get('zip', '')} {addr.get('town', '')}".strip(),
+                    f"{zip_code} {town}".strip(),
                 ]
                 address = ", ".join(p for p in parts if p)
                 if address:
-                    return address
+                    return address, town, zip_code
             # Try flat fields
+            zip_code = third.get("addressZip", "")
+            town = third.get("addressTown", "")
             parts = [
                 third.get("addressPart1", third.get("address", "")),
-                f"{third.get('addressZip', '')} {third.get('addressTown', '')}".strip(),
+                f"{zip_code} {town}".strip(),
             ]
             address = ", ".join(p for p in parts if p)
             if address:
-                return address
-        return ""
+                return address, town, zip_code
+        return "", "", ""
     except Exception:
-        return ""
+        return "", "", ""
 
 
 def sync_from_sellsy():
@@ -577,7 +582,7 @@ def sync_from_sellsy():
                     pass
 
         # Récupérer l'adresse
-        address = _fetch_opp_address(client, opp_id)
+        address, ville, cp = _fetch_opp_address(client, opp_id)
 
         # Récupérer le mobile du contact si pas déjà dans l'opp
         if not opp_data.get("mobile") and detail:
@@ -595,6 +600,8 @@ def sync_from_sellsy():
                     pass
 
         opp_data["adresse"] = address
+        opp_data["ville"] = ville
+        opp_data["cp"] = cp
         opp_data["devis_ref"] = devis_ref
         opp_data["devis_lines"] = devis_lines
 
@@ -801,6 +808,13 @@ async def board(request: Request):
     }
 
     for ch in sorted(chantiers.values(), key=lambda x: x.get("created_at", ""), reverse=True):
+        # Enrichir ville/CP depuis l'adresse si pas encore présent
+        sellsy = ch.get("sellsy", {})
+        if not sellsy.get("ville") and sellsy.get("adresse"):
+            m = re.search(r"(\d{5})\s+(.+?)(?:,|$)", sellsy["adresse"])
+            if m:
+                sellsy["cp"] = m.group(1)
+                sellsy["ville"] = m.group(2).strip()
         # Chantier marqué terminé = colonne terminé
         if ch.get("termine", {}).get("valide_par"):
             ch["etape"] = "termine"
