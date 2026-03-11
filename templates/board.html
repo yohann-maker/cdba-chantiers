@@ -53,7 +53,7 @@
                     {% else %}
                     <div class="card-done-badge">Fait</div>
                     {% endif %}
-                    <div class="card-title">{{ ch.sellsy.client or ch.sellsy.nom }}{% if ch.sellsy.cp or ch.sellsy.ville %} <span class="card-ville">{{ ch.sellsy.cp }} {{ ch.sellsy.ville }}</span>{% endif %}</div>
+                    <div class="card-title">{% if ch.sellsy.contact_prenom %}{{ ch.sellsy.contact_prenom }} {% endif %}{{ ch.sellsy.client or ch.sellsy.nom }}{% if ch.sellsy.cp or ch.sellsy.ville %} <span class="card-ville">{{ ch.sellsy.cp }} {{ ch.sellsy.ville }}</span>{% endif %}</div>
                     <div class="card-subtitle">{{ ch.sellsy.nom }}</div>
                     <div class="card-meta">
                         <span class="card-amount">{{ "%.0f"|format(ch.sellsy.montant) }} €</span>

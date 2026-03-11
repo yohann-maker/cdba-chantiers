@@ -584,18 +584,26 @@ def sync_from_sellsy():
         # Récupérer l'adresse
         address, ville, cp = _fetch_opp_address(client, opp_id)
 
-        # Récupérer le mobile du contact si pas déjà dans l'opp
-        if not opp_data.get("mobile") and detail:
+        # Récupérer le mobile et prénom du contact si pas déjà dans l'opp
+        if detail:
             contact_id = detail.get("contactId", detail.get("contact_id", ""))
             if contact_id and str(contact_id) != "0":
                 try:
                     contact_data = client.call("Peoples.getOne", {"id": contact_id})
-                    opp_data["mobile"] = (
-                        contact_data.get("mobile", "")
-                        or contact_data.get("phoneMobile", "")
-                        or contact_data.get("phone", "")
-                        or ""
-                    )
+                    if not opp_data.get("mobile"):
+                        opp_data["mobile"] = (
+                            contact_data.get("mobile", "")
+                            or contact_data.get("phoneMobile", "")
+                            or contact_data.get("phone", "")
+                            or ""
+                        )
+                    if not opp_data.get("contact_prenom"):
+                        opp_data["contact_prenom"] = (
+                            contact_data.get("forename", "")
+                            or contact_data.get("firstname", "")
+                            or contact_data.get("first_name", "")
+                            or ""
+                        )
                 except Exception:
                     pass
 
@@ -646,6 +654,7 @@ def _extract_opp_data(opp):
 
     client_name = opp.get("thirdName", opp.get("linkedName", ""))
     contact_name = opp.get("contactName", opp.get("contactFullName", ""))
+    contact_prenom = opp.get("contactForename", opp.get("contactFirstName", ""))
 
     # Téléphone mobile — on cherche dans plusieurs champs
     mobile = (
@@ -662,6 +671,7 @@ def _extract_opp_data(opp):
         "nom": opp.get("name", opp.get("ident", "")),
         "client": client_name,
         "contact": contact_name,
+        "contact_prenom": contact_prenom,
         "mobile": mobile,
         "montant": amount,
         "step": opp.get("stepLabel", opp.get("step_label", "")),
