@@ -24,6 +24,9 @@ import requests
 
 logger = logging.getLogger("cdba")
 
+# Slack webhook pour notifier les ouvriers (canal #bdc-et-photos-chantiers)
+SLACK_WEBHOOK_URL = os.getenv("SLACK_WEBHOOK_CHANTIERS", "")
+
 # ──────────────────────────────────────────────────────
 # CONFIG
 # ──────────────────────────────────────────────────────
@@ -904,16 +907,15 @@ async def save_preparation(
 
 
 @app.post("/chantier/{chantier_id}/commande")
-async def save_commande(
-    request: Request,
-    chantier_id: str,
-    fournisseur: str = Form(""),
-    reference_commande: str = Form(""),
-    notes: str = Form(""),
-):
+async def save_commande(request: Request, chantier_id: str):
     user = get_current_user(request)
     if not user:
         raise HTTPException(401)
+
+    form = await request.form()
+    fournisseur = form.get("fournisseur", "")
+    reference_commande = form.get("reference_commande", "")
+    notes = form.get("notes", "")
 
     chantiers = load_chantiers()
     ch = chantiers.get(chantier_id)
@@ -926,10 +928,64 @@ async def save_commande(
         "notes": notes,
         "valide_par": user["name"],
         "valide_le": datetime.now().isoformat(),
+        "factures": ch.get("commande", {}).get("factures", []),
     }
     ch["etape"] = _compute_etape(ch)
     ch["historique"].append({
         "action": "Commande matériaux validée",
+        "par": user["name"],
+        "date": datetime.now().isoformat(),
+    })
+
+    save_chantiers(chantiers)
+    return RedirectResponse(f"/chantier/{chantier_id}", status_code=302)
+
+
+@app.post("/chantier/{chantier_id}/facture")
+async def upload_facture(request: Request, chantier_id: str):
+    """Upload une facture matériaux (photo ou PDF)."""
+    user = get_current_user(request)
+    if not user:
+        raise HTTPException(401)
+
+    form = await request.form()
+    fichier = form.get("facture")
+    if not fichier or not fichier.filename:
+        return RedirectResponse(f"/chantier/{chantier_id}", status_code=302)
+
+    chantiers = load_chantiers()
+    ch = chantiers.get(chantier_id)
+    if not ch:
+        raise HTTPException(404)
+
+    ext = Path(fichier.filename).suffix.lower()
+    if ext not in ('.jpg', '.jpeg', '.png', '.webp', '.heic', '.pdf'):
+        raise HTTPException(400, "Format non supporté (JPG, PNG, PDF)")
+
+    chantier_uploads = UPLOADS_DIR / chantier_id
+    chantier_uploads.mkdir(exist_ok=True)
+
+    file_id = uuid.uuid4().hex[:8]
+    filename = f"facture_{file_id}{ext}"
+    filepath = chantier_uploads / filename
+    content = await fichier.read()
+    with open(filepath, "wb") as f:
+        f.write(content)
+
+    if "commande" not in ch:
+        ch["commande"] = {}
+    if "factures" not in ch["commande"]:
+        ch["commande"]["factures"] = []
+
+    ch["commande"]["factures"].append({
+        "filename": filename,
+        "original_name": fichier.filename,
+        "uploaded_by": user["name"],
+        "uploaded_at": datetime.now().isoformat(),
+    })
+
+    ch["historique"].append({
+        "action": f"Facture ajoutée : {fichier.filename}",
         "par": user["name"],
         "date": datetime.now().isoformat(),
     })
@@ -1353,6 +1409,59 @@ async def reset_step(request: Request, chantier_id: str, step: str):
     return RedirectResponse(f"/chantier/{chantier_id}", status_code=302)
 
 
+def _send_slack_note(ch, note_text, author):
+    """Envoie une notification Slack quand une note est ajoutée sur un chantier."""
+    if not SLACK_WEBHOOK_URL:
+        return
+    try:
+        sellsy = ch.get("sellsy", {})
+        client = sellsy.get("client", "?")
+        prenom = sellsy.get("contact_prenom", "")
+        nom_opp = sellsy.get("nom", "")
+        ville = sellsy.get("ville", "")
+        cp = sellsy.get("cp", "")
+        lieu = f"{cp} {ville}".strip() if ville or cp else ""
+        adresse = sellsy.get("adresse", "")
+
+        header = f"*{prenom} {client}*" if prenom else f"*{client}*"
+        if lieu:
+            header += f" — {lieu}"
+
+        blocks = [
+            {
+                "type": "header",
+                "text": {"type": "plain_text", "text": f"📝 Note chantier — {client}"}
+            },
+            {
+                "type": "section",
+                "text": {"type": "mrkdwn", "text": (
+                    f"{header}\n"
+                    f"📋 {nom_opp}\n"
+                    f"📍 {adresse}\n\n"
+                    f"*{author}* a noté :\n"
+                    f">{note_text}"
+                )}
+            },
+        ]
+
+        # Ajouter un récap des notes précédentes s'il y en a
+        notes_suivi = ch.get("notes_suivi", [])
+        if len(notes_suivi) > 1:
+            previous = notes_suivi[:-1][-3:]  # 3 dernières notes avant celle-ci
+            recap_lines = []
+            for n in previous:
+                recap_lines.append(f"• _{n['par']}_ : {n['texte'][:80]}")
+            if recap_lines:
+                blocks.append({
+                    "type": "section",
+                    "text": {"type": "mrkdwn", "text": "*Notes précédentes :*\n" + "\n".join(recap_lines)}
+                })
+
+        requests.post(SLACK_WEBHOOK_URL, json={"blocks": blocks}, timeout=5)
+    except Exception as e:
+        logger.warning(f"Erreur envoi Slack note : {e}")
+
+
 @app.post("/chantier/{chantier_id}/note")
 async def add_note(request: Request, chantier_id: str):
     user = get_current_user(request)
@@ -1385,6 +1494,10 @@ async def add_note(request: Request, chantier_id: str):
     })
 
     save_chantiers(chantiers)
+
+    # Notifier Slack en arrière-plan
+    threading.Thread(target=_send_slack_note, args=(ch, texte, user["name"]), daemon=True).start()
+
     return RedirectResponse(f"/chantier/{chantier_id}", status_code=302)
 
 

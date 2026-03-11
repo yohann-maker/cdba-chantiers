@@ -275,6 +275,30 @@
                 <button type="submit" class="btn btn-primary">Valider la commande</button>
             </form>
             {% endif %}
+
+            <!-- Factures matériaux -->
+            {% set factures = ch.commande.get('factures', []) %}
+            {% if factures %}
+            <div class="factures-section" style="margin-top:16px;">
+                <span class="info-label">Factures matériaux</span>
+                <div class="factures-list">
+                    {% for fac in factures %}
+                    <a href="/uploads/{{ ch.id }}/{{ fac.filename }}" target="_blank" class="facture-item">
+                        <span class="facture-icon">{{ fac.filename.split('.')[-1].upper() }}</span>
+                        <span class="facture-name">{{ fac.original_name }}</span>
+                        <span class="facture-meta">{{ fac.uploaded_by }} — {{ fac.uploaded_at[:10] }}</span>
+                    </a>
+                    {% endfor %}
+                </div>
+            </div>
+            {% endif %}
+
+            <form method="post" action="/chantier/{{ ch.id }}/facture" enctype="multipart/form-data" style="margin-top:10px;">
+                <label class="btn btn-outline btn-upload">
+                    Ajouter une facture
+                    <input type="file" name="facture" accept="image/*,.pdf" capture="environment" style="display:none" onchange="this.form.submit()">
+                </label>
+            </form>
         </section>
 
         <!-- Étape 3 : Programmation (Gina/Charlotte) -->
