@@ -1638,3 +1638,84 @@ async def debug_chantier(request: Request, chantier_id: str):
         "commande_validee": bool(ch.get("commande", {}).get("valide_par")),
         "env_slack": bool(SLACK_WEBHOOK_URL),
     })
+
+
+# ──────────────────────────────────────────────────────
+# API EXTERNE (clé API pour scripts / dashboard)
+# ──────────────────────────────────────────────────────
+
+API_KEY = os.getenv("API_KEY", "")
+
+
+def _check_api_key(request: Request):
+    """Vérifie la clé API (header ou query param)."""
+    if not API_KEY:
+        raise HTTPException(503, "API_KEY non configurée sur le serveur")
+    key = request.headers.get("X-API-Key") or request.query_params.get("key")
+    if key != API_KEY:
+        raise HTTPException(401, "Clé API invalide")
+
+
+@app.get("/api/chantiers")
+async def api_list_chantiers(request: Request):
+    """Liste tous les chantiers avec leur état (pour scripts externes)."""
+    _check_api_key(request)
+    chantiers = load_chantiers()
+    result = []
+    for cid, ch in chantiers.items():
+        s = ch.get("sellsy", {})
+        prog = ch.get("programmation", {})
+        cmd = ch.get("commande", {})
+        prep = ch.get("preparation", {})
+        result.append({
+            "id": cid,
+            "etape": ch.get("etape", "?"),
+            "client": s.get("client", ""),
+            "contact": s.get("contact", ""),
+            "ville": s.get("ville", ""),
+            "montant": s.get("montant", 0),
+            "sellsy_step": s.get("stepLabel", s.get("step_label", "")),
+            "preparation_validee": bool(prep.get("valide_par")),
+            "commande_validee": bool(cmd.get("valide_par")),
+            "programmation_validee": bool(prog.get("date_debut")),
+            "date_debut": prog.get("date_debut", ""),
+            "date_fin": prog.get("date_fin", ""),
+            "equipe": prep.get("equipe", []),
+            "nb_jours": prep.get("nb_jours", 0),
+            "created_at": ch.get("created_at", ""),
+        })
+    return JSONResponse(result)
+
+
+ETAPES_ORDRE = ["a_preparer", "a_commander", "a_programmer", "termine"]
+ETAPES_LABELS = {
+    "a_preparer": "À préparer",
+    "a_commander": "À commander",
+    "a_programmer": "À programmer",
+    "termine": "Terminé",
+}
+
+
+@app.post("/api/chantiers/{chantier_id}/etape")
+async def api_set_etape(request: Request, chantier_id: str):
+    """Change l'étape d'un chantier (pour mise à jour en masse)."""
+    _check_api_key(request)
+    body = await request.json()
+    nouvelle_etape = body.get("etape")
+    if nouvelle_etape not in ETAPES_ORDRE:
+        raise HTTPException(400, f"Étape invalide. Valeurs possibles : {ETAPES_ORDRE}")
+
+    chantiers = load_chantiers()
+    ch = chantiers.get(chantier_id)
+    if not ch:
+        raise HTTPException(404, "Chantier non trouvé")
+
+    ancienne = ch.get("etape")
+    ch["etape"] = nouvelle_etape
+    ch.setdefault("historique", []).append({
+        "action": f"Étape changée : {ETAPES_LABELS.get(ancienne, ancienne)} → {ETAPES_LABELS.get(nouvelle_etape, nouvelle_etape)}",
+        "par": "api",
+        "date": datetime.now().isoformat(),
+    })
+    save_chantiers(chantiers)
+    return JSONResponse({"ok": True, "id": chantier_id, "ancienne_etape": ancienne, "nouvelle_etape": nouvelle_etape})
