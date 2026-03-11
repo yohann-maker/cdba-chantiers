@@ -539,18 +539,41 @@ def sync_from_sellsy():
         # Si déjà dans notre base, on met à jour les infos Sellsy mais on garde les données saisies
         if opp_id in chantiers:
             chantiers[opp_id]["sellsy"] = _extract_opp_data(opp)
+            s = chantiers[opp_id]["sellsy"]
+
+            # Enrichir adresse/ville/CP et prénom si manquants
+            if not s.get("ville") or not s.get("contact_prenom"):
+                try:
+                    detail_existing = client.call("Opportunities.getOne", {"id": opp_id})
+                    if not s.get("ville"):
+                        addr, ville, cp = _fetch_opp_address(client, opp_id)
+                        s["adresse"] = addr
+                        s["ville"] = ville
+                        s["cp"] = cp
+                    if not s.get("contact_prenom"):
+                        cid = detail_existing.get("contactId", detail_existing.get("contact_id", ""))
+                        if cid and str(cid) != "0":
+                            contact_data = client.call("Peoples.getOne", {"id": cid})
+                            s["contact_prenom"] = (
+                                contact_data.get("forename", "")
+                                or contact_data.get("firstname", "")
+                                or contact_data.get("first_name", "")
+                                or ""
+                            )
+                except Exception:
+                    pass
 
             # Re-fetch devis si manquant ou en erreur
-            existing_lines = chantiers[opp_id]["sellsy"].get("devis_lines", [])
+            existing_lines = s.get("devis_lines", [])
             has_error = any(l.get("reference") == "Erreur" for l in existing_lines)
             if not existing_lines or has_error:
                 try:
                     detail = client.call("Opportunities.getOne", {"id": opp_id})
                     main_doc_id = detail.get("mainDocId")
                     if main_doc_id and str(main_doc_id) != "0":
-                        chantiers[opp_id]["sellsy"]["devis_lines"] = _fetch_devis_lines(client, main_doc_id)
+                        s["devis_lines"] = _fetch_devis_lines(client, main_doc_id)
                         doc_info = client.call("Document.getOne", {"doctype": "estimate", "docid": main_doc_id})
-                        chantiers[opp_id]["sellsy"]["devis_ref"] = doc_info.get("ident", "")
+                        s["devis_ref"] = doc_info.get("ident", "")
                 except Exception:
                     pass
 
