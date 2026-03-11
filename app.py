@@ -485,10 +485,16 @@ def _extract_address_from_dict(data):
     if not isinstance(data, dict):
         return "", "", ""
 
-    # 1) Structure imbriquée (Client.getOne → address: {part1, zip, town})
+    # 1) Structure imbriquée (Client.getOne → address: list ou dict)
     for addr_key in ("thirdAddress", "address", "shipAddress", "corpAddress"):
         addr_block = data.get(addr_key)
-        if not addr_block or not isinstance(addr_block, dict):
+        if not addr_block:
+            continue
+        # Sellsy peut renvoyer une liste d'adresses — prendre la principale ou la première
+        if isinstance(addr_block, list):
+            main = next((a for a in addr_block if a.get("isMain") == "Y"), None)
+            addr_block = main or (addr_block[0] if addr_block else None)
+        if not isinstance(addr_block, dict):
             continue
         zip_code = str(addr_block.get("zip", "") or "").strip()
         town = str(addr_block.get("town", "") or "").strip()
