@@ -476,39 +476,83 @@ def _fetch_devis_lines(client, doc_id):
         return [{"reference": "Erreur", "description": str(e), "quantite": 0, "unite": "", "prix_unitaire": 0}]
 
 
-def _fetch_opp_address(client, opp_id):
-    """Récupère l'adresse du chantier depuis l'opportunité.
+def _extract_address_from_dict(data):
+    """Extrait adresse, ville, CP depuis un dict Sellsy (client/prospect).
+    Cherche dans les structures imbriquées (address, thirdAddress, etc.)
+    et les champs plats (addr_part1, addr_zip, etc.).
     Retourne (adresse_complete, ville, cp).
     """
+    if not isinstance(data, dict):
+        return "", "", ""
+
+    # 1) Structure imbriquée (Client.getOne → address: {part1, zip, town})
+    for addr_key in ("thirdAddress", "address", "shipAddress", "corpAddress"):
+        addr_block = data.get(addr_key)
+        if not addr_block or not isinstance(addr_block, dict):
+            continue
+        zip_code = str(addr_block.get("zip", "") or "").strip()
+        town = str(addr_block.get("town", "") or "").strip()
+        part1 = str(addr_block.get("part1", "") or "").strip()
+        part2 = str(addr_block.get("part2", "") or "").strip()
+        parts = [p for p in [part1, part2, f"{zip_code} {town}".strip()] if p]
+        address = ", ".join(parts)
+        if address:
+            return address, town, zip_code
+
+    # 2) Champs plats (addr_part1, addr_zip, addr_town)
+    zip_code = str(data.get("addr_zip", data.get("addressZip", "")) or "").strip()
+    town = str(data.get("addr_town", data.get("addressTown", "")) or "").strip()
+    part1 = str(data.get("addr_part1", data.get("addressPart1", "")) or "").strip()
+    if part1 or zip_code or town:
+        parts = [p for p in [part1, f"{zip_code} {town}".strip()] if p]
+        return ", ".join(parts), town, zip_code
+
+    return "", "", ""
+
+
+def _fetch_opp_details(client, opp_id):
+    """Récupère adresse, prénom et mobile depuis l'opportunité Sellsy.
+    Cascade : contacts de l'opp → fiche client (Client.getOne).
+    Retourne (adresse, ville, cp, prenom, mobile).
+    """
+    prenom = ""
+    mobile = ""
+    address = ""
+    ville = ""
+    cp = ""
+
     try:
         resp = client.call("Opportunities.getOne", {"id": opp_id})
-        third = resp.get("thirdDetails", {})
-        if isinstance(third, dict):
-            addr = third.get("address", third.get("addr", {}))
-            if isinstance(addr, dict):
-                zip_code = addr.get("zip", "")
-                town = addr.get("town", "")
-                parts = [
-                    addr.get("part1", ""),
-                    addr.get("part2", ""),
-                    f"{zip_code} {town}".strip(),
-                ]
-                address = ", ".join(p for p in parts if p)
-                if address:
-                    return address, town, zip_code
-            # Try flat fields
-            zip_code = third.get("addressZip", "")
-            town = third.get("addressTown", "")
-            parts = [
-                third.get("addressPart1", third.get("address", "")),
-                f"{zip_code} {town}".strip(),
-            ]
-            address = ", ".join(p for p in parts if p)
-            if address:
-                return address, town, zip_code
-        return "", "", ""
+
+        # Prénom + mobile depuis contacts de l'opp
+        contacts = resp.get("contacts", [])
+        if isinstance(contacts, list) and contacts:
+            c = contacts[0]
+            prenom = c.get("forename", "") or ""
+            mobile = c.get("mobile", "") or c.get("tel", "") or ""
+
+        # Mobile fallback depuis thirdDetails
+        if not mobile:
+            third = resp.get("thirdDetails", {})
+            if isinstance(third, dict):
+                mobile = third.get("mobile", "") or third.get("tel", "") or ""
+
+        # Adresse depuis la fiche client (Client.getOne)
+        third_id = resp.get("linkedid", "")
+        if third_id and str(third_id) != "0":
+            for method, param in [("Client.getOne", "clientid"), ("Prospects.getOne", "id")]:
+                try:
+                    tiers = client.call(method, {param: third_id})
+                    address, ville, cp = _extract_address_from_dict(tiers)
+                    if address:
+                        break
+                except Exception:
+                    continue
+
     except Exception:
-        return "", "", ""
+        pass
+
+    return address, ville, cp, prenom, mobile
 
 
 def sync_from_sellsy():
@@ -541,25 +585,18 @@ def sync_from_sellsy():
             chantiers[opp_id]["sellsy"] = _extract_opp_data(opp)
             s = chantiers[opp_id]["sellsy"]
 
-            # Enrichir adresse/ville/CP et prénom si manquants
+            # Enrichir adresse/ville/CP, prénom et mobile si manquants
             if not s.get("ville") or not s.get("contact_prenom"):
                 try:
-                    detail_existing = client.call("Opportunities.getOne", {"id": opp_id})
-                    if not s.get("ville"):
-                        addr, ville, cp = _fetch_opp_address(client, opp_id)
+                    addr, ville, cp_code, prenom, mob = _fetch_opp_details(client, opp_id)
+                    if not s.get("ville") and addr:
                         s["adresse"] = addr
                         s["ville"] = ville
-                        s["cp"] = cp
-                    if not s.get("contact_prenom"):
-                        cid = detail_existing.get("contactId", detail_existing.get("contact_id", ""))
-                        if cid and str(cid) != "0":
-                            contact_data = client.call("Peoples.getOne", {"id": cid})
-                            s["contact_prenom"] = (
-                                contact_data.get("forename", "")
-                                or contact_data.get("firstname", "")
-                                or contact_data.get("first_name", "")
-                                or ""
-                            )
+                        s["cp"] = cp_code
+                    if not s.get("contact_prenom") and prenom:
+                        s["contact_prenom"] = prenom
+                    if not s.get("mobile") and mob:
+                        s["mobile"] = mob
                 except Exception:
                     pass
 
@@ -607,35 +644,15 @@ def sync_from_sellsy():
                 except Exception:
                     pass
 
-        # Récupérer l'adresse
-        address, ville, cp = _fetch_opp_address(client, opp_id)
-
-        # Récupérer le mobile et prénom du contact si pas déjà dans l'opp
-        if detail:
-            contact_id = detail.get("contactId", detail.get("contact_id", ""))
-            if contact_id and str(contact_id) != "0":
-                try:
-                    contact_data = client.call("Peoples.getOne", {"id": contact_id})
-                    if not opp_data.get("mobile"):
-                        opp_data["mobile"] = (
-                            contact_data.get("mobile", "")
-                            or contact_data.get("phoneMobile", "")
-                            or contact_data.get("phone", "")
-                            or ""
-                        )
-                    if not opp_data.get("contact_prenom"):
-                        opp_data["contact_prenom"] = (
-                            contact_data.get("forename", "")
-                            or contact_data.get("firstname", "")
-                            or contact_data.get("first_name", "")
-                            or ""
-                        )
-                except Exception:
-                    pass
-
+        # Récupérer adresse, prénom et mobile depuis l'opp + fiche client
+        address, ville, cp_code, prenom, mob = _fetch_opp_details(client, opp_id)
         opp_data["adresse"] = address
         opp_data["ville"] = ville
-        opp_data["cp"] = cp
+        opp_data["cp"] = cp_code
+        if prenom and not opp_data.get("contact_prenom"):
+            opp_data["contact_prenom"] = prenom
+        if mob and not opp_data.get("mobile"):
+            opp_data["mobile"] = mob
         opp_data["devis_ref"] = devis_ref
         opp_data["devis_lines"] = devis_lines
 
