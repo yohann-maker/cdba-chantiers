@@ -1591,3 +1591,27 @@ async def api_sync(request: Request):
         raise HTTPException(401)
     result = sync_from_sellsy()
     return JSONResponse(result)
+
+
+@app.get("/api/debug/{chantier_id}")
+async def debug_chantier(request: Request, chantier_id: str):
+    user = get_current_user(request)
+    if not user:
+        raise HTTPException(401)
+    chantiers = load_chantiers()
+    ch = chantiers.get(chantier_id)
+    if not ch:
+        raise HTTPException(404)
+    sellsy = ch.get("sellsy", {})
+    return JSONResponse({
+        "client": sellsy.get("client"),
+        "contact": sellsy.get("contact"),
+        "contact_prenom": sellsy.get("contact_prenom"),
+        "ville": sellsy.get("ville"),
+        "cp": sellsy.get("cp"),
+        "adresse": sellsy.get("adresse"),
+        "slack_recap_sent": ch.get("slack_recap_sent"),
+        "preparation_validee": bool(ch.get("preparation", {}).get("valide_par")),
+        "commande_validee": bool(ch.get("commande", {}).get("valide_par")),
+        "env_slack": bool(SLACK_WEBHOOK_URL),
+    })
