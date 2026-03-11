@@ -925,6 +925,7 @@ async def save_preparation(
         "date": datetime.now().isoformat(),
     })
 
+    _check_and_send_slack_recap(ch)
     save_chantiers(chantiers)
     return RedirectResponse(f"/chantier/{chantier_id}", status_code=302)
 
@@ -960,6 +961,7 @@ async def save_commande(request: Request, chantier_id: str):
         "date": datetime.now().isoformat(),
     })
 
+    _check_and_send_slack_recap(ch)
     save_chantiers(chantiers)
     return RedirectResponse(f"/chantier/{chantier_id}", status_code=302)
 
@@ -1421,6 +1423,8 @@ async def reset_step(request: Request, chantier_id: str, step: str):
     old_by = old_data.get("valide_par", "?")
 
     ch[step] = {}
+    if step in ("preparation", "commande"):
+        ch.pop("slack_recap_sent", None)
     ch["etape"] = _compute_etape(ch)
     ch["historique"].append({
         "action": f"{step.capitalize()} réinitialisée (était validée par {old_by})",
@@ -1432,57 +1436,103 @@ async def reset_step(request: Request, chantier_id: str, step: str):
     return RedirectResponse(f"/chantier/{chantier_id}", status_code=302)
 
 
-def _send_slack_note(ch, note_text, author):
-    """Envoie une notification Slack quand une note est ajoutée sur un chantier."""
+def _send_slack_recap_chantier(ch):
+    """Envoie un récap Slack quand préparation ET commande sont validées.
+    Contient : infos chantier, matériaux, fournisseur, notes William + Julien.
+    """
     if not SLACK_WEBHOOK_URL:
         return
     try:
         sellsy = ch.get("sellsy", {})
+        prep = ch.get("preparation", {})
+        cmd = ch.get("commande", {})
+
         client = sellsy.get("client", "?")
         prenom = sellsy.get("contact_prenom", "")
         nom_opp = sellsy.get("nom", "")
+        adresse = sellsy.get("adresse", "")
+        mobile = sellsy.get("mobile", "")
+        montant = sellsy.get("montant", 0)
         ville = sellsy.get("ville", "")
         cp = sellsy.get("cp", "")
         lieu = f"{cp} {ville}".strip() if ville or cp else ""
-        adresse = sellsy.get("adresse", "")
 
-        header = f"*{prenom} {client}*" if prenom else f"*{client}*"
-        if lieu:
-            header += f" — {lieu}"
+        nom_client = f"{prenom} {client}".strip() if prenom else client
+
+        # Infos préparation
+        nb_jours = prep.get("nb_jours", "?")
+        nb_pers = prep.get("nb_personnes", "?")
+        equipe = ", ".join(prep.get("equipe", []))
+        materiaux = prep.get("materiaux", "")
+        notes_prep = prep.get("notes", "")
+
+        # Infos commande
+        fournisseur = cmd.get("fournisseur", "")
+        ref_cmd = cmd.get("reference_commande", "")
+        notes_cmd = cmd.get("notes", "")
 
         blocks = [
             {
                 "type": "header",
-                "text": {"type": "plain_text", "text": f"📝 Note chantier — {client}"}
+                "text": {"type": "plain_text", "text": f"🔧 Chantier prêt — {nom_client}"}
             },
             {
                 "type": "section",
                 "text": {"type": "mrkdwn", "text": (
-                    f"{header}\n"
+                    f"*{nom_client}*" + (f" — {lieu}" if lieu else "") + "\n"
                     f"📋 {nom_opp}\n"
-                    f"📍 {adresse}\n\n"
-                    f"*{author}* a noté :\n"
-                    f">{note_text}"
+                    f"📍 {adresse}\n"
+                    + (f"📱 {mobile}\n" if mobile else "")
+                    + f"💰 {montant:.0f} € HT\n"
+                    f"👷 {nb_pers} pers. × {nb_jours} jour(s) — {equipe}"
                 )}
             },
         ]
 
-        # Ajouter un récap des notes précédentes s'il y en a
-        notes_suivi = ch.get("notes_suivi", [])
-        if len(notes_suivi) > 1:
-            previous = notes_suivi[:-1][-3:]  # 3 dernières notes avant celle-ci
-            recap_lines = []
-            for n in previous:
-                recap_lines.append(f"• _{n['par']}_ : {n['texte'][:80]}")
-            if recap_lines:
-                blocks.append({
-                    "type": "section",
-                    "text": {"type": "mrkdwn", "text": "*Notes précédentes :*\n" + "\n".join(recap_lines)}
-                })
+        # Matériaux
+        if materiaux:
+            blocks.append({
+                "type": "section",
+                "text": {"type": "mrkdwn", "text": f"*🧱 Matériaux :*\n```{materiaux}```"}
+            })
+
+        # Commande / fournisseur
+        cmd_lines = []
+        if fournisseur:
+            cmd_lines.append(f"🏪 Fournisseur : *{fournisseur}*")
+        if ref_cmd:
+            cmd_lines.append(f"📦 Réf. commande : {ref_cmd}")
+        if cmd_lines:
+            blocks.append({
+                "type": "section",
+                "text": {"type": "mrkdwn", "text": "\n".join(cmd_lines)}
+            })
+
+        # Notes William + Julien
+        notes_lines = []
+        if notes_prep:
+            blocks.append({
+                "type": "section",
+                "text": {"type": "mrkdwn", "text": f"*📝 Note de {prep.get('valide_par', 'William')} (prépa) :*\n>{notes_prep}"}
+            })
+        if notes_cmd:
+            blocks.append({
+                "type": "section",
+                "text": {"type": "mrkdwn", "text": f"*📝 Note de {cmd.get('valide_par', 'Julien')} (commande) :*\n>{notes_cmd}"}
+            })
 
         requests.post(SLACK_WEBHOOK_URL, json={"blocks": blocks}, timeout=5)
     except Exception as e:
-        logger.warning(f"Erreur envoi Slack note : {e}")
+        logger.warning(f"Erreur envoi Slack récap chantier : {e}")
+
+
+def _check_and_send_slack_recap(ch):
+    """Vérifie si prépa + commande sont validées → envoie le récap Slack (une seule fois)."""
+    prep = ch.get("preparation", {})
+    cmd = ch.get("commande", {})
+    if prep.get("valide_par") and cmd.get("valide_par") and not ch.get("slack_recap_sent"):
+        ch["slack_recap_sent"] = True
+        threading.Thread(target=_send_slack_recap_chantier, args=(ch,), daemon=True).start()
 
 
 @app.post("/chantier/{chantier_id}/note")
@@ -1517,10 +1567,6 @@ async def add_note(request: Request, chantier_id: str):
     })
 
     save_chantiers(chantiers)
-
-    # Notifier Slack en arrière-plan
-    threading.Thread(target=_send_slack_note, args=(ch, texte, user["name"]), daemon=True).start()
-
     return RedirectResponse(f"/chantier/{chantier_id}", status_code=302)
 
 
