@@ -405,6 +405,32 @@
             {% endif %}
         </section>
 
+        <!-- Notes de suivi -->
+        <section class="detail-section">
+            <h2>Notes de suivi</h2>
+            {% if ch.get('notes_suivi') %}
+            <div class="notes-list">
+                {% for note in ch.notes_suivi | reverse %}
+                <div class="note-item">
+                    <div class="note-header">
+                        <span class="note-author">{{ note.par }}</span>
+                        <span class="note-date">{{ note.date[:16].replace('T', ' ') }}</span>
+                    </div>
+                    <p class="note-text">{{ note.texte }}</p>
+                </div>
+                {% endfor %}
+            </div>
+            {% else %}
+            <p class="text-muted">Aucune note pour le moment.</p>
+            {% endif %}
+            <form method="post" action="/chantier/{{ ch.id }}/note" class="note-form">
+                <div class="form-group">
+                    <textarea name="texte" rows="2" placeholder="Ajouter une note (reste à faire, problème, info...)"></textarea>
+                </div>
+                <button type="submit" class="btn btn-outline">Ajouter une note</button>
+            </form>
+        </section>
+
         <!-- Historique -->
         <section class="detail-section">
             <h2>Historique</h2>

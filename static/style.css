@@ -790,6 +790,61 @@ body {
     gap: 8px;
 }
 
+/* Notes de suivi */
+.notes-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-bottom: 16px;
+}
+
+.note-item {
+    background: var(--bg-input);
+    border-radius: 8px;
+    padding: 10px 14px;
+    border-left: 3px solid var(--primary);
+}
+
+.note-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 4px;
+}
+
+.note-author {
+    font-weight: 600;
+    font-size: 12px;
+    color: var(--primary);
+}
+
+.note-date {
+    font-size: 11px;
+    color: var(--text-muted);
+}
+
+.note-text {
+    font-size: 14px;
+    margin: 0;
+    white-space: pre-wrap;
+}
+
+.note-form {
+    margin-top: 12px;
+}
+
+.note-form textarea {
+    width: 100%;
+    background: var(--bg-input);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    color: var(--text);
+    padding: 10px;
+    font-size: 14px;
+    font-family: inherit;
+    resize: vertical;
+}
+
 .timeline-event {
     display: flex;
     align-items: baseline;

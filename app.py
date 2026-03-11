@@ -1343,6 +1343,41 @@ async def reset_step(request: Request, chantier_id: str, step: str):
     return RedirectResponse(f"/chantier/{chantier_id}", status_code=302)
 
 
+@app.post("/chantier/{chantier_id}/note")
+async def add_note(request: Request, chantier_id: str):
+    user = get_current_user(request)
+    if not user:
+        raise HTTPException(401)
+
+    form = await request.form()
+    texte = form.get("texte", "").strip()
+    if not texte:
+        return RedirectResponse(f"/chantier/{chantier_id}", status_code=302)
+
+    chantiers = load_chantiers()
+    ch = chantiers.get(chantier_id)
+    if not ch:
+        raise HTTPException(404)
+
+    if "notes_suivi" not in ch:
+        ch["notes_suivi"] = []
+
+    ch["notes_suivi"].append({
+        "texte": texte,
+        "par": user["name"],
+        "date": datetime.now().isoformat(),
+    })
+
+    ch["historique"].append({
+        "action": f"Note ajoutée : {texte[:50]}{'...' if len(texte) > 50 else ''}",
+        "par": user["name"],
+        "date": datetime.now().isoformat(),
+    })
+
+    save_chantiers(chantiers)
+    return RedirectResponse(f"/chantier/{chantier_id}", status_code=302)
+
+
 @app.post("/sync")
 async def sync(request: Request):
     user = get_current_user(request)
