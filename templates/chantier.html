@@ -348,6 +348,63 @@
             {% endif %}
         </section>
 
+        <!-- Étape 4 : Chantier terminé -->
+        <section class="detail-section step-section {{ 'step-done' if ch.get('termine', {}).get('valide_par') else 'step-active' }}">
+            <div class="step-header">
+                <span class="step-badge" style="background: #22c55e">✓</span>
+                <h2>Chantier terminé</h2>
+                {% if ch.get('termine', {}).get('valide_par') %}
+                <span class="step-status done">Validé par {{ ch.termine.valide_par }}</span>
+                <form method="post" action="/chantier/{{ ch.id }}/reset/termine" style="display:inline; margin-left:8px;">
+                    <button type="submit" class="btn btn-small btn-ghost btn-reset">Modifier</button>
+                </form>
+                {% else %}
+                <span class="step-status active">En cours</span>
+                {% endif %}
+            </div>
+
+            {% if ch.get('termine', {}).get('valide_par') %}
+            <div class="info-grid">
+                <div class="info-item">
+                    <span class="info-label">Jours réels</span>
+                    <span class="info-value">{{ ch.termine.jours_reels }}</span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">Jours prévus</span>
+                    <span class="info-value">{{ ch.preparation.get('nb_jours', '—') }}</span>
+                </div>
+                {% if ch.preparation.get('nb_jours') and ch.termine.jours_reels != ch.preparation.nb_jours %}
+                <div class="info-item">
+                    <span class="info-label">Écart</span>
+                    <span class="info-value" style="color: {{ 'var(--green)' if ch.termine.jours_reels <= ch.preparation.nb_jours else 'var(--red)' }}">
+                        {{ '+' if ch.termine.jours_reels > ch.preparation.nb_jours else '' }}{{ ch.termine.jours_reels - ch.preparation.nb_jours }} jour(s)
+                    </span>
+                </div>
+                {% endif %}
+            </div>
+            {% if ch.termine.get('notes') %}
+            <div class="info-description" style="margin-top:12px;">
+                <span class="info-label">Remarques</span>
+                <p>{{ ch.termine.notes }}</p>
+            </div>
+            {% endif %}
+            {% else %}
+            <form method="post" action="/chantier/{{ ch.id }}/termine" class="step-form">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="jours_reels">Nombre de jours réels</label>
+                        <input type="number" id="jours_reels" name="jours_reels" min="0.5" max="60" step="0.5" value="{{ ch.preparation.get('nb_jours', 1) }}" required>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label for="notes_termine">Remarques</label>
+                    <textarea id="notes_termine" name="notes" rows="2" placeholder="Problèmes rencontrés, reste à faire..."></textarea>
+                </div>
+                <button type="submit" class="btn btn-primary" style="background: var(--green);">Marquer comme terminé</button>
+            </form>
+            {% endif %}
+        </section>
+
         <!-- Historique -->
         <section class="detail-section">
             <h2>Historique</h2>

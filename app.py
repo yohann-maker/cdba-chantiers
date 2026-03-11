@@ -797,9 +797,15 @@ async def board(request: Request):
     colonnes = {
         "en_cours": {"label": "En cours", "color": "#f97316", "icon": "🟠", "chantiers": []},
         "pret": {"label": "Prêt", "color": "#22c55e", "icon": "🟢", "chantiers": []},
+        "termine": {"label": "Terminé", "color": "#64748b", "icon": "✅", "chantiers": []},
     }
 
     for ch in sorted(chantiers.values(), key=lambda x: x.get("created_at", ""), reverse=True):
+        # Chantier marqué terminé = colonne terminé
+        if ch.get("termine", {}).get("valide_par"):
+            ch["etape"] = "termine"
+            colonnes["termine"]["chantiers"].append(ch)
+            continue
         # Recalculer l'étape
         etape = _compute_etape(ch)
         ch["etape"] = etape
@@ -1258,13 +1264,49 @@ async def upload_photos(
     return RedirectResponse(f"/chantier/{chantier_id}", status_code=302)
 
 
+@app.post("/chantier/{chantier_id}/termine")
+async def save_termine(
+    request: Request,
+    chantier_id: str,
+    jours_reels: float = Form(...),
+    notes: str = Form(""),
+):
+    user = get_current_user(request)
+    if not user:
+        raise HTTPException(401)
+
+    chantiers = load_chantiers()
+    ch = chantiers.get(chantier_id)
+    if not ch:
+        raise HTTPException(404)
+
+    nb_jours_prevu = ch.get("preparation", {}).get("nb_jours", 0)
+
+    ch["termine"] = {
+        "jours_reels": jours_reels,
+        "jours_prevus": nb_jours_prevu,
+        "notes": notes,
+        "valide_par": user["name"],
+        "valide_le": datetime.now().isoformat(),
+    }
+    ch["etape"] = "termine"
+    ch["historique"].append({
+        "action": f"Chantier terminé — {jours_reels}j réels (prévu {nb_jours_prevu}j)",
+        "par": user["name"],
+        "date": datetime.now().isoformat(),
+    })
+
+    save_chantiers(chantiers)
+    return RedirectResponse(f"/chantier/{chantier_id}", status_code=302)
+
+
 @app.post("/chantier/{chantier_id}/reset/{step}")
 async def reset_step(request: Request, chantier_id: str, step: str):
     user = get_current_user(request)
     if not user:
         raise HTTPException(401)
 
-    if step not in ("preparation", "commande", "programmation"):
+    if step not in ("preparation", "commande", "programmation", "termine"):
         raise HTTPException(400, "Étape invalide")
 
     chantiers = load_chantiers()
