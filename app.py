@@ -776,6 +776,12 @@ def get_current_user(request: Request):
 # ROUTES
 # ──────────────────────────────────────────────────────
 
+@app.get("/sectorisation", response_class=HTMLResponse)
+async def sectorisation():
+    html_path = STATIC_DIR / "sectorisation.html"
+    return HTMLResponse(content=html_path.read_text(encoding="utf-8"))
+
+
 @app.get("/", response_class=HTMLResponse)
 async def index(request: Request):
     user = get_current_user(request)

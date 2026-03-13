@@ -1,0 +1,477 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<title>Sectorisation Commerciale CDBA — Carte</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: 'Helvetica Neue', Arial, sans-serif; }
+#map { width: 100%; height: 100vh; }
+
+.legend {
+  background: white; padding: 14px 18px; border-radius: 10px;
+  box-shadow: 0 2px 12px rgba(0,0,0,0.25); font-size: 13px; line-height: 1.8;
+  max-width: 280px;
+}
+.legend h3 { font-size: 15px; margin-bottom: 8px; color: #1B3A5C; }
+.legend-item { display: flex; align-items: center; gap: 8px; }
+.legend-color { width: 18px; height: 18px; border-radius: 4px; border: 1px solid rgba(0,0,0,0.2); flex-shrink: 0; }
+.legend-separator { border-top: 1px solid #eee; margin: 6px 0; }
+.legend small { color: #888; font-size: 11px; }
+
+.info-panel {
+  background: white; padding: 14px 18px; border-radius: 10px;
+  box-shadow: 0 2px 12px rgba(0,0,0,0.25); font-size: 12px; line-height: 1.6;
+  max-width: 320px;
+}
+.info-panel h3 { font-size: 14px; margin-bottom: 6px; }
+.info-panel .rule { background: #FFF3CD; border-left: 3px solid #D4850A; padding: 6px 10px; margin-top: 8px; border-radius: 4px; font-size: 11px; }
+
+.home-icon {
+  background: white; border: 3px solid; border-radius: 50%;
+  width: 28px; height: 28px; display: flex; align-items: center; justify-content: center;
+  font-size: 14px; box-shadow: 0 2px 6px rgba(0,0,0,0.3); font-weight: bold;
+}
+</style>
+</head>
+<body>
+<div id="map"></div>
+<script>
+const map = L.map('map', { zoomControl: true }).setView([44.72, -0.58], 9);
+
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  attribution: '© OpenStreetMap contributors',
+  maxZoom: 18
+}).addTo(map);
+
+// ============================
+// GARONNE RIVER PATH (approximation fine)
+// ============================
+const garonne = [
+  [44.5800, -0.0350], // La Réole
+  [44.5700, -0.0800],
+  [44.5600, -0.1200],
+  [44.5530, -0.1800],
+  [44.5530, -0.2450], // Langon
+  [44.5650, -0.2800],
+  [44.5900, -0.3000],
+  [44.6100, -0.3100],
+  [44.6370, -0.3250], // Cadillac
+  [44.6520, -0.3570], // Podensac
+  [44.6700, -0.3800],
+  [44.6930, -0.4060], // Portets
+  [44.7150, -0.4250],
+  [44.7380, -0.4510], // Beautiran
+  [44.7600, -0.4800],
+  [44.7800, -0.5100],
+  [44.7950, -0.5440], // Bègles (TRIPLE POINT)
+];
+
+const garonneNorth = [
+  [44.7950, -0.5440], // Bègles
+  [44.8150, -0.5550],
+  [44.8350, -0.5620], // Bordeaux centre
+  [44.8500, -0.5530],
+  [44.8650, -0.5400],
+  [44.8720, -0.5350], // Pont d'Aquitaine
+  [44.8850, -0.5200],
+  [44.9050, -0.5080], // Bassens
+  [44.9200, -0.4950],
+  [44.9320, -0.4870], // Ambarès
+  [44.9500, -0.4900],
+  [44.9700, -0.5100],
+  [44.9900, -0.5400],
+  [45.0100, -0.5700],
+  [45.0350, -0.5950], // Bec d'Ambès
+];
+
+// Gironde estuary (approximate center line)
+const estuary = [
+  [45.0350, -0.5950],
+  [45.0600, -0.6200],
+  [45.0900, -0.6500],
+  [45.1270, -0.6640], // Blaye area
+  [45.1600, -0.6900],
+  [45.2000, -0.7200],
+  [45.2500, -0.7600],
+  [45.3000, -0.8000],
+  [45.3500, -0.8500],
+  [45.4000, -0.9000],
+  [45.4500, -0.9500],
+  [45.5000, -1.0000],
+  [45.5700, -1.0600], // Pointe de Grave area
+];
+
+// SW boundary: Triple point to Belin-Béliet to Landes border
+const swBoundary = [
+  [44.7950, -0.5440], // Triple point (Bègles)
+  [44.7700, -0.5700],
+  [44.7500, -0.5950],
+  [44.7300, -0.6300],
+  [44.7100, -0.6600],
+  [44.6800, -0.6900],
+  [44.6500, -0.7150],
+  [44.6200, -0.7350],
+  [44.5800, -0.7500],
+  [44.5400, -0.7650],
+  [44.5000, -0.7800], // Belin-Béliet area
+  [44.4500, -0.8000],
+  [44.4000, -0.8300],
+  [44.3500, -0.8600],
+  [44.3000, -0.8900],
+  [44.2500, -0.9100],
+  [44.2000, -0.9300], // Deep Landes
+];
+
+// ============================
+// SECTOR POLYGONS
+// ============================
+
+// Outer boundary points
+const coastNW = [45.5700, -1.1400]; // Soulac coast
+const coastW1 = [45.3500, -1.1800];
+const coastW2 = [45.2000, -1.1900];
+const coastW3 = [45.0000, -1.2000]; // Lacanau
+const coastW4 = [44.8500, -1.2000];
+const coastW5 = [44.7500, -1.1900]; // Arcachon area
+const coastW6 = [44.6600, -1.1800];
+const coastSW = [44.5000, -1.2200]; // Biscarrosse
+const landesSW = [44.2000, -1.1500];
+const landesS = [44.2000, -0.9300];
+const landesSE = [44.2000, -0.5000];
+const captieux = [44.2900, -0.2600];
+const bazasS = [44.3500, -0.1500];
+const reoleS = [44.5200, 0.0000];
+const departE1 = [44.5800, 0.0800]; // Monségur
+const departE2 = [44.7000, 0.1000];
+const departE3 = [44.8500, 0.0500]; // Castillon
+const departE4 = [44.9500, 0.0000];
+const departNE = [45.0500, -0.1000]; // Coutras
+const departN1 = [45.1500, -0.2000];
+const departN2 = [45.2500, -0.3500];
+const departN = [45.3000, -0.5000]; // Saint-Ciers
+const pointeN = [45.5700, -1.0600];
+
+// SECTOR WEST (David) - Blue
+const sectorWest = [
+  // Start at Pointe de Grave coast side
+  coastNW,
+  coastW1, coastW2, coastW3, coastW4, coastW5, coastW6,
+  coastSW,
+  // East to Belin-Béliet line
+  [44.5000, -1.1000],
+  [44.5000, -0.7800], // Belin-Béliet
+  // NE along SW boundary to triple point
+  [44.5400, -0.7650],
+  [44.5800, -0.7500],
+  [44.6200, -0.7350],
+  [44.6500, -0.7150],
+  [44.6800, -0.6900],
+  [44.7100, -0.6600],
+  [44.7300, -0.6300],
+  [44.7500, -0.5950],
+  [44.7700, -0.5700],
+  [44.7950, -0.5440], // Triple point
+  // Along Garonne north
+  [44.8150, -0.5550],
+  [44.8350, -0.5620],
+  [44.8500, -0.5530],
+  [44.8650, -0.5400],
+  [44.8720, -0.5350],
+  [44.8850, -0.5200],
+  [44.9050, -0.5080],
+  [44.9200, -0.4950],
+  [44.9320, -0.4870],
+  [44.9500, -0.4900],
+  [44.9700, -0.5100],
+  [44.9900, -0.5400],
+  [45.0100, -0.5700],
+  [45.0350, -0.5950], // Bec d'Ambès
+  // Along estuary west bank
+  [45.0600, -0.6300],
+  [45.0900, -0.6600],
+  [45.1270, -0.6740],
+  [45.1600, -0.7000],
+  [45.2000, -0.7300],
+  [45.2500, -0.7700],
+  [45.3000, -0.8100],
+  [45.3500, -0.8600],
+  [45.4000, -0.9100],
+  [45.4500, -0.9600],
+  [45.5000, -1.0100],
+  pointeN,
+  coastNW
+];
+
+// SECTOR EAST (Gregory) - Green
+const sectorEast = [
+  // Start at estuary east bank (Pointe de Grave side)
+  [45.5700, -1.0500],
+  // Along estuary east bank (slightly east of center)
+  [45.5000, -0.9900],
+  [45.4500, -0.9400],
+  [45.4000, -0.8900],
+  [45.3500, -0.8400],
+  [45.3000, -0.7900],
+  [45.2500, -0.7500],
+  [45.2000, -0.7100],
+  [45.1600, -0.6800],
+  [45.1270, -0.6540],
+  [45.0900, -0.6400],
+  [45.0600, -0.6100],
+  [45.0350, -0.5950], // Bec d'Ambès
+  // Along Garonne south (east bank)
+  [45.0100, -0.5700],
+  [44.9900, -0.5400],
+  [44.9700, -0.5100],
+  [44.9500, -0.4900],
+  [44.9320, -0.4870],
+  [44.9200, -0.4950],
+  [44.9050, -0.5080],
+  [44.8850, -0.5200],
+  [44.8720, -0.5350],
+  [44.8650, -0.5400],
+  [44.8500, -0.5530],
+  [44.8350, -0.5620],
+  [44.8150, -0.5550],
+  [44.7950, -0.5440], // Triple point
+  // Along Garonne SE (east/north bank)
+  [44.7800, -0.5100],
+  [44.7600, -0.4800],
+  [44.7380, -0.4510],
+  [44.7150, -0.4250],
+  [44.6930, -0.4060],
+  [44.6700, -0.3800],
+  [44.6520, -0.3570],
+  [44.6370, -0.3250],
+  [44.6100, -0.3100],
+  [44.5900, -0.3000],
+  [44.5650, -0.2800],
+  [44.5530, -0.2450],
+  [44.5530, -0.1800],
+  [44.5600, -0.1200],
+  [44.5700, -0.0800],
+  [44.5800, -0.0350], // La Réole
+  // East department border
+  departE1, departE2, departE3, departE4, departNE,
+  departN1, departN2, departN,
+  // North to Pointe area
+  [45.3500, -0.5500],
+  [45.4000, -0.6000],
+  [45.4500, -0.7000],
+  [45.5000, -0.8000],
+  [45.5700, -1.0500],
+];
+
+// SECTOR SOUTH (Julien) - Orange
+const sectorSouth = [
+  // Start at triple point
+  [44.7950, -0.5440],
+  // Along SW boundary to Landes
+  [44.7700, -0.5700],
+  [44.7500, -0.5950],
+  [44.7300, -0.6300],
+  [44.7100, -0.6600],
+  [44.6800, -0.6900],
+  [44.6500, -0.7150],
+  [44.6200, -0.7350],
+  [44.5800, -0.7500],
+  [44.5400, -0.7650],
+  [44.5000, -0.7800], // Belin-Béliet
+  // South into Landes
+  [44.5000, -1.1000],
+  [44.5000, -1.2200],
+  landesSW, landesS, landesSE,
+  captieux, bazasS, reoleS,
+  [44.5800, -0.0350], // La Réole
+  // Along Garonne NW (south/left bank)
+  [44.5700, -0.0800],
+  [44.5600, -0.1200],
+  [44.5530, -0.1800],
+  [44.5530, -0.2450],
+  [44.5650, -0.2800],
+  [44.5900, -0.3000],
+  [44.6100, -0.3100],
+  [44.6370, -0.3250],
+  [44.6520, -0.3570],
+  [44.6700, -0.3800],
+  [44.6930, -0.4060],
+  [44.7150, -0.4250],
+  [44.7380, -0.4510],
+  [44.7600, -0.4800],
+  [44.7800, -0.5100],
+  [44.7950, -0.5440], // Back to triple point
+];
+
+// ============================
+// DRAW SECTORS
+// ============================
+
+const westPoly = L.polygon(sectorWest, {
+  color: '#1565C0', weight: 2, fillColor: '#42A5F5', fillOpacity: 0.20, dashArray: null
+}).addTo(map);
+
+const eastPoly = L.polygon(sectorEast, {
+  color: '#2E7D32', weight: 2, fillColor: '#66BB6A', fillOpacity: 0.20, dashArray: null
+}).addTo(map);
+
+const southPoly = L.polygon(sectorSouth, {
+  color: '#E65100', weight: 2, fillColor: '#FFA726', fillOpacity: 0.20, dashArray: null
+}).addTo(map);
+
+// ============================
+// BOUNDARY LINES (thick, dashed)
+// ============================
+
+// Garonne (West ↔ East) — from triple point to estuary
+const garonneLineNorth = [...garonneNorth, ...estuary];
+L.polyline(garonneLineNorth, {
+  color: '#D32F2F', weight: 4, dashArray: '12, 8', opacity: 0.9
+}).addTo(map).bindPopup('<strong>Frontière Garonne</strong><br>Sépare Secteur OUEST (David) et Secteur EST (Gregory)');
+
+// Garonne (East ↔ South) — from La Réole to triple point
+L.polyline(garonne, {
+  color: '#D32F2F', weight: 4, dashArray: '12, 8', opacity: 0.9
+}).addTo(map).bindPopup('<strong>Frontière Garonne</strong><br>Sépare Secteur EST (Gregory) et Secteur SUD (Julien)');
+
+// SW Line (West ↔ South) — from triple point to Landes
+L.polyline(swBoundary, {
+  color: '#D32F2F', weight: 4, dashArray: '12, 8', opacity: 0.9
+}).addTo(map).bindPopup('<strong>Frontière Ouest/Sud</strong><br>Ligne Bègles → Belin-Béliet → Landes<br>Sépare Secteur OUEST (David) et Secteur SUD (Julien)');
+
+// ============================
+// TRIPLE POINT marker
+// ============================
+L.circleMarker([44.7950, -0.5440], {
+  radius: 8, color: '#D32F2F', fillColor: '#D32F2F', fillOpacity: 1, weight: 2
+}).addTo(map).bindPopup('<strong>Point triple</strong><br>Jonction des 3 secteurs<br>(sud Bordeaux / Bègles)');
+
+// ============================
+// HOME BASE MARKERS
+// ============================
+
+function createHomeMarker(latlng, name, color, sector, maisons) {
+  const icon = L.divIcon({
+    className: '',
+    html: `<div style="background:white;border:3px solid ${color};border-radius:50%;width:32px;height:32px;display:flex;align-items:center;justify-content:center;font-size:16px;box-shadow:0 2px 8px rgba(0,0,0,0.35);">🏠</div>`,
+    iconSize: [32, 32],
+    iconAnchor: [16, 16]
+  });
+  return L.marker(latlng, { icon }).addTo(map)
+    .bindPopup(`<strong>${name}</strong><br>Secteur ${sector}<br>~${maisons} maisons`);
+}
+
+createHomeMarker([44.8386, -0.6436], 'David — Mérignac', '#1565C0', 'OUEST', '195 000');
+createHomeMarker([44.8567, -0.4417], 'Gregory — Pompignac', '#2E7D32', 'EST', '195 000');
+createHomeMarker([44.3833, -0.8167], 'Julien — Saugnac-et-Muret', '#E65100', 'SUD', '190 000');
+
+// ============================
+// KEY CITY LABELS
+// ============================
+
+function addLabel(latlng, text, size) {
+  L.marker(latlng, {
+    icon: L.divIcon({
+      className: '',
+      html: `<div style="font-size:${size || 11}px;font-weight:600;color:#333;text-shadow:1px 1px 2px white,-1px -1px 2px white,1px -1px 2px white,-1px 1px 2px white;white-space:nowrap;">${text}</div>`,
+      iconAnchor: [0, 0]
+    })
+  }).addTo(map);
+}
+
+addLabel([44.8450, -0.5750], 'BORDEAUX', 13);
+addLabel([44.9150, -0.4700], 'Ambarès');
+addLabel([45.1270, -0.6640], 'Blaye');
+addLabel([44.9200, -0.2400], 'Libourne');
+addLabel([44.6600, -1.1700], 'Arcachon');
+addLabel([44.6370, -0.3250], 'Cadillac');
+addLabel([44.5530, -0.2450], 'Langon');
+addLabel([44.4300, -0.2100], 'Bazas');
+addLabel([45.2000, -1.0500], 'Lesparre');
+addLabel([44.8800, -0.7700], 'St-Médard');
+addLabel([44.7450, -0.5650], 'La Brède');
+addLabel([44.4800, -0.7800], 'Belin-Béliet', 10);
+addLabel([44.5400, -1.0600], 'Parentis');
+addLabel([44.2400, -0.9300], 'Labouheyre');
+addLabel([44.8900, -0.6200], 'Bruges');
+addLabel([44.7900, -0.6300], 'Pessac');
+addLabel([44.8200, -0.7100], 'Mérignac');
+addLabel([45.0400, -0.5600], 'Bourg');
+addLabel([44.6600, -0.3900], 'Créon');
+addLabel([44.2900, -0.2600], 'Captieux');
+addLabel([44.8400, -0.4300], 'Pompignac');
+
+// Sector labels (large, centered)
+function addSectorLabel(latlng, text, color) {
+  L.marker(latlng, {
+    icon: L.divIcon({
+      className: '',
+      html: `<div style="font-size:18px;font-weight:800;color:${color};text-shadow:2px 2px 4px white,-2px -2px 4px white,2px -2px 4px white,-2px 2px 4px white;white-space:nowrap;letter-spacing:2px;opacity:0.7;">${text}</div>`,
+      iconAnchor: [60, 10]
+    })
+  }).addTo(map);
+}
+
+addSectorLabel([45.10, -0.95], 'SECTEUR OUEST', '#1565C0');
+addSectorLabel([44.95, -0.15], 'SECTEUR EST', '#2E7D32');
+addSectorLabel([44.40, -0.55], 'SECTEUR SUD', '#E65100');
+
+// ============================
+// LEGEND
+// ============================
+
+const legend = L.control({ position: 'topright' });
+legend.onAdd = function() {
+  const div = L.DomUtil.create('div', 'legend');
+  div.innerHTML = `
+    <h3>Sectorisation CDBA</h3>
+    <div class="legend-item"><div class="legend-color" style="background:#42A5F5"></div> <strong>OUEST</strong> — David (Mérignac)</div>
+    <div class="legend-item"><div class="legend-color" style="background:#66BB6A"></div> <strong>EST</strong> — Gregory (Pompignac)</div>
+    <div class="legend-item"><div class="legend-color" style="background:#FFA726"></div> <strong>SUD</strong> — Julien (Saugnac-et-Muret)</div>
+    <div class="legend-separator"></div>
+    <div class="legend-item"><div class="legend-color" style="background:transparent;border:2px dashed #D32F2F"></div> Frontières de secteur</div>
+    <div class="legend-item"><div class="legend-color" style="background:#D32F2F;border-radius:50%"></div> Point triple (jonction)</div>
+    <div class="legend-separator"></div>
+    <small>~195 000 maisons / secteur<br>Frontière principale : la Garonne</small>
+  `;
+  return div;
+};
+legend.addTo(map);
+
+// Info panel
+const info = L.control({ position: 'bottomleft' });
+info.onAdd = function() {
+  const div = L.DomUtil.create('div', 'info-panel');
+  div.innerHTML = `
+    <h3>Frontières</h3>
+    <table style="font-size:11px;width:100%;border-collapse:collapse;">
+      <tr><td style="padding:3px 0;"><strong>Garonne</strong></td><td>Ouest ↔ Est (métropole) puis Est ↔ Sud (aval)</td></tr>
+      <tr><td style="padding:3px 0;"><strong>Ligne SW</strong></td><td>Bègles → Belin-Béliet → Landes = Ouest ↔ Sud</td></tr>
+      <tr><td style="padding:3px 0;"><strong>Dept. 33/40</strong></td><td>Julien déborde naturellement dans les Landes</td></tr>
+    </table>
+    <div class="rule">
+      <strong>Règle 6 mois :</strong> Client non exploité depuis 6 mois = réattribuable à un autre commercial.
+    </div>
+  `;
+  return div;
+};
+info.addTo(map);
+
+// Hover effects
+function setupHover(poly, color, fillColor) {
+  poly.on('mouseover', function() { this.setStyle({ fillOpacity: 0.35, weight: 3 }); });
+  poly.on('mouseout', function() { this.setStyle({ fillOpacity: 0.20, weight: 2 }); });
+}
+setupHover(westPoly);
+setupHover(eastPoly);
+setupHover(southPoly);
+
+// Popups on sector click
+westPoly.bindPopup('<strong>SECTEUR OUEST — David</strong><br>~195 000 maisons<br>Rive gauche + Médoc + Bassin d\'Arcachon<br>Urbain/périurbain + littoral');
+eastPoly.bindPopup('<strong>SECTEUR EST — Gregory</strong><br>~195 000 maisons<br>Rive droite + Libournais + Blayais + Entre-deux-Mers<br>Périurbain + rural viticole');
+southPoly.bindPopup('<strong>SECTEUR SUD — Julien</strong><br>~190 000 maisons<br>Sud Gironde + Nord Landes<br>Fort potentiel termites 🐛');
+</script>
+</body>
+</html>
