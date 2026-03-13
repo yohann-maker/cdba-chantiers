@@ -866,7 +866,7 @@ async def board(request: Request):
         "termine": {"label": "Terminé", "color": "#64748b", "icon": "✅", "chantiers": []},
     }
 
-    for ch in sorted(chantiers.values(), key=lambda x: x.get("created_at", ""), reverse=True):
+    for ch in sorted(chantiers.values(), key=lambda x: x.get("created_at", "")):
         # Enrichir ville/CP depuis l'adresse si pas encore présent
         sellsy = ch.get("sellsy", {})
         if not sellsy.get("ville") and sellsy.get("adresse"):
