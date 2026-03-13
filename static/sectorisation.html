@@ -24,7 +24,7 @@ body { font-family: 'Helvetica Neue', Arial, sans-serif; }
 .info-panel {
   background: white; padding: 14px 18px; border-radius: 10px;
   box-shadow: 0 2px 12px rgba(0,0,0,0.25); font-size: 12px; line-height: 1.6;
-  max-width: 320px;
+  max-width: 340px;
 }
 .info-panel h3 { font-size: 14px; margin-bottom: 6px; }
 .info-panel .rule { background: #FFF3CD; border-left: 3px solid #D4850A; padding: 6px 10px; margin-top: 8px; border-radius: 4px; font-size: 11px; }
@@ -47,40 +47,18 @@ L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
 }).addTo(map);
 
 // ============================
-// GARONNE RIVER PATH (approximation fine)
+// GARONNE — du triple point vers le nord (David / Gregory)
 // ============================
-const garonne = [
-  [44.5800, -0.0350], // La Réole
-  [44.5700, -0.0800],
-  [44.5600, -0.1200],
-  [44.5530, -0.1800],
-  [44.5530, -0.2450], // Langon
-  [44.5650, -0.2800],
-  [44.5900, -0.3000],
-  [44.6100, -0.3100],
-  [44.6370, -0.3250], // Cadillac
-  [44.6520, -0.3570], // Podensac
-  [44.6700, -0.3800],
-  [44.6930, -0.4060], // Portets
-  [44.7150, -0.4250],
-  [44.7380, -0.4510], // Beautiran
-  [44.7600, -0.4800],
-  [44.7800, -0.5100],
-  [44.7950, -0.5440], // Bègles
-  [44.8150, -0.5550],
-  [44.8280, -0.5600], // Nouveau triple point (niveau D106 / Garonne)
-];
-
 const garonneNorth = [
-  [44.8280, -0.5600], // Nouveau triple point
-  [44.8350, -0.5620], // Bordeaux centre
+  [44.8280, -0.5600], // Triple point (D106 / Garonne)
+  [44.8350, -0.5620],
   [44.8500, -0.5530],
   [44.8650, -0.5400],
-  [44.8720, -0.5350], // Pont d'Aquitaine
+  [44.8720, -0.5350],
   [44.8850, -0.5200],
-  [44.9050, -0.5080], // Bassens
+  [44.9050, -0.5080],
   [44.9200, -0.4950],
-  [44.9320, -0.4870], // Ambarès
+  [44.9320, -0.4870],
   [44.9500, -0.4900],
   [44.9700, -0.5100],
   [44.9900, -0.5400],
@@ -88,12 +66,11 @@ const garonneNorth = [
   [45.0350, -0.5950], // Bec d'Ambès
 ];
 
-// Gironde estuary (approximate center line)
 const estuary = [
   [45.0350, -0.5950],
   [45.0600, -0.6200],
   [45.0900, -0.6500],
-  [45.1270, -0.6640], // Blaye area
+  [45.1270, -0.6640],
   [45.1600, -0.6900],
   [45.2000, -0.7200],
   [45.2500, -0.7600],
@@ -102,67 +79,120 @@ const estuary = [
   [45.4000, -0.9000],
   [45.4500, -0.9500],
   [45.5000, -1.0000],
-  [45.5700, -1.0600], // Pointe de Grave area
+  [45.5700, -1.0600],
 ];
 
 // ============================
-// D106 BOUNDARY — David (Nord-Ouest) / Julien (Sud)
-// Passe juste en dessous de Mérignac, au nord de Pessac
+// GARONNE — du triple point vers Portets (Julien / Gregory)
+// Puis frontière SE bifurque vers le sud
+// ============================
+const garonneToPortets = [
+  [44.8280, -0.5600], // Triple point
+  [44.8150, -0.5550],
+  [44.7950, -0.5440], // Bègles
+  [44.7800, -0.5100],
+  [44.7600, -0.4800],
+  [44.7380, -0.4510], // Beautiran
+  [44.7150, -0.4250],
+  [44.6930, -0.4060], // Portets — point de bifurcation
+];
+
+// ============================
+// FRONTIÈRE SUD-EST — Portets → Landes (Julien / Gregory)
+// Gregory récupère Langon, Bazas, Captieux, La Réole
+// ============================
+const seBoundary = [
+  [44.6930, -0.4060], // Portets — bifurcation depuis la Garonne
+  [44.6700, -0.4300], // Sud de Portets
+  [44.6400, -0.4600], // Vers Léognan est
+  [44.6100, -0.4900], // Saucats
+  [44.5800, -0.5200], // Cabanac
+  [44.5500, -0.5500], // Nord Belin-Béliet
+  [44.5200, -0.5700],
+  [44.4800, -0.5900], // Est de Belin-Béliet
+  [44.4400, -0.6000],
+  [44.4000, -0.6100],
+  [44.3600, -0.6200],
+  [44.3200, -0.6200],
+  [44.2800, -0.6200],
+  [44.2400, -0.6200],
+  [44.2000, -0.6200], // Frontière Landes
+];
+
+// ============================
+// GARONNE — Portets → La Réole (interne Gregory sud)
+// ============================
+const garonnePortetsReole = [
+  [44.6930, -0.4060], // Portets
+  [44.6700, -0.3800],
+  [44.6520, -0.3570],
+  [44.6370, -0.3250],
+  [44.6100, -0.3100],
+  [44.5900, -0.3000],
+  [44.5650, -0.2800],
+  [44.5530, -0.2450],
+  [44.5530, -0.1800],
+  [44.5600, -0.1200],
+  [44.5700, -0.0800],
+  [44.5800, -0.0350], // La Réole
+];
+
+// ============================
+// D106 BOUNDARY — David / Julien
 // ============================
 const d106Boundary = [
-  [44.8280, -0.5600], // Triple point (jonction D106 / Garonne, niveau Talence)
-  [44.8250, -0.5800], // Talence
-  [44.8220, -0.6050], // Nord Pessac / Sud Mérignac
-  [44.8250, -0.6300], // Sud aéroport Mérignac
-  [44.8280, -0.6550], // Mérignac Arlac sud
-  [44.8300, -0.6800], // Martignas-sur-Jalle
-  [44.8280, -0.7100], // Saint-Jean-d'Illac nord
+  [44.8280, -0.5600],
+  [44.8250, -0.5800],
+  [44.8220, -0.6050],
+  [44.8250, -0.6300],
+  [44.8280, -0.6550],
+  [44.8300, -0.6800],
+  [44.8280, -0.7100],
   [44.8250, -0.7400],
-  [44.8200, -0.7700], // Salaunes / Le Temple
+  [44.8200, -0.7700],
   [44.8100, -0.8100],
   [44.8000, -0.8500],
   [44.7800, -0.9000],
   [44.7600, -0.9500],
   [44.7400, -1.0000],
-  [44.7200, -1.0500], // Lacanau sud
+  [44.7200, -1.0500],
   [44.7000, -1.1000],
-  [44.6800, -1.1500], // Côte (entre Lacanau et Arcachon)
+  [44.6800, -1.1500],
 ];
 
 // ============================
-// SECTOR POLYGONS
+// OUTER BOUNDARY POINTS
 // ============================
-
-// Outer boundary points
-const coastNW = [45.5700, -1.1400]; // Soulac coast
+const coastNW = [45.5700, -1.1400];
 const coastW1 = [45.3500, -1.1800];
 const coastW2 = [45.2000, -1.1900];
-const coastW3 = [45.0000, -1.2000]; // Lacanau
+const coastW3 = [45.0000, -1.2000];
 const coastW4 = [44.8500, -1.2000];
-const coastW5 = [44.7500, -1.1900]; // Nord Arcachon
-// D106 rejoint la côte ici
-const coastW6 = [44.6600, -1.1800]; // Sud vers Arcachon
-const coastSW = [44.5000, -1.2200]; // Biscarrosse
+const coastW5 = [44.7500, -1.1900];
+const coastW6 = [44.6600, -1.1800];
+const coastSW = [44.5000, -1.2200];
 const landesSW = [44.2000, -1.1500];
 const landesS = [44.2000, -0.9300];
-const landesSE = [44.2000, -0.5000];
+const landesSE_julien = [44.2000, -0.6200]; // Julien s'arrête ici
+const landesSE_gregory = [44.2000, -0.5000]; // Gregory commence ici
 const captieux = [44.2900, -0.2600];
 const bazasS = [44.3500, -0.1500];
 const reoleS = [44.5200, 0.0000];
-const departE1 = [44.5800, 0.0800]; // Monségur
+const departE1 = [44.5800, 0.0800];
 const departE2 = [44.7000, 0.1000];
-const departE3 = [44.8500, 0.0500]; // Castillon
+const departE3 = [44.8500, 0.0500];
 const departE4 = [44.9500, 0.0000];
-const departNE = [45.0500, -0.1000]; // Coutras
+const departNE = [45.0500, -0.1000];
 const departN1 = [45.1500, -0.2000];
 const departN2 = [45.2500, -0.3500];
-const departN = [45.3000, -0.5000]; // Saint-Ciers
+const departN = [45.3000, -0.5000];
 const pointeN = [45.5700, -1.0600];
 
-// SECTOR NORD-OUEST (David) - Blue
+// ============================
+// SECTOR NORD-OUEST (David) — Bleu
 // Mérignac + Médoc + nord rive gauche
+// ============================
 const sectorNordOuest = [
-  // Start at coast where D106 meets the coast
   [44.6800, -1.1500],
   [44.7000, -1.1000],
   [44.7200, -1.0500],
@@ -180,7 +210,7 @@ const sectorNordOuest = [
   [44.8220, -0.6050],
   [44.8250, -0.5800],
   [44.8280, -0.5600], // Triple point
-  // North along Garonne (rive gauche)
+  // North along Garonne
   [44.8350, -0.5620],
   [44.8500, -0.5530],
   [44.8650, -0.5400],
@@ -193,8 +223,8 @@ const sectorNordOuest = [
   [44.9700, -0.5100],
   [44.9900, -0.5400],
   [45.0100, -0.5700],
-  [45.0350, -0.5950], // Bec d'Ambès
-  // Along estuary west bank
+  [45.0350, -0.5950],
+  // Estuary west bank
   [45.0600, -0.6300],
   [45.0900, -0.6600],
   [45.1270, -0.6740],
@@ -208,12 +238,14 @@ const sectorNordOuest = [
   [45.5000, -1.0100],
   pointeN,
   coastNW,
-  // South along coast to D106 line
   coastW1, coastW2, coastW3, coastW4, coastW5,
-  [44.6800, -1.1500], // Back to D106 coast intersection
+  [44.6800, -1.1500],
 ];
 
-// SECTOR EST (Gregory) - Green — INCHANGÉ
+// ============================
+// SECTOR EST (Gregory) — Vert
+// Rive droite + sud-est Gironde (Langon, Bazas, Captieux)
+// ============================
 const sectorEast = [
   [45.5700, -1.0500],
   [45.5000, -0.9900],
@@ -227,8 +259,8 @@ const sectorEast = [
   [45.1270, -0.6540],
   [45.0900, -0.6400],
   [45.0600, -0.6100],
-  [45.0350, -0.5950], // Bec d'Ambès
-  // Along Garonne south (east bank)
+  [45.0350, -0.5950],
+  // Garonne south (east bank) to triple point
   [45.0100, -0.5700],
   [44.9900, -0.5400],
   [44.9700, -0.5100],
@@ -241,15 +273,16 @@ const sectorEast = [
   [44.8650, -0.5400],
   [44.8500, -0.5530],
   [44.8350, -0.5620],
-  [44.8280, -0.5600], // Nouveau triple point
-  // Continue along Garonne south
+  [44.8280, -0.5600], // Triple point
+  // Garonne south to Portets
   [44.8150, -0.5550],
   [44.7950, -0.5440],
   [44.7800, -0.5100],
   [44.7600, -0.4800],
   [44.7380, -0.4510],
   [44.7150, -0.4250],
-  [44.6930, -0.4060],
+  [44.6930, -0.4060], // Portets — bifurcation
+  // Continue along Garonne to La Réole (rive droite = Gregory)
   [44.6700, -0.3800],
   [44.6520, -0.3570],
   [44.6370, -0.3250],
@@ -261,7 +294,7 @@ const sectorEast = [
   [44.5600, -0.1200],
   [44.5700, -0.0800],
   [44.5800, -0.0350], // La Réole
-  // East department border
+  // SE department border
   departE1, departE2, departE3, departE4, departNE,
   departN1, departN2, departN,
   [45.3500, -0.5500],
@@ -269,12 +302,33 @@ const sectorEast = [
   [45.4500, -0.7000],
   [45.5000, -0.8000],
   [45.5700, -1.0500],
+  // === EXTENSION SUD-EST (Langon, Bazas, Captieux) ===
+  // From La Réole, continue south along dept border
+  reoleS, bazasS, captieux,
+  landesSE_gregory, // Frontière Landes
+  // North along SE boundary back to Portets
+  [44.2400, -0.6200],
+  [44.2800, -0.6200],
+  [44.3200, -0.6200],
+  [44.3600, -0.6200],
+  [44.4000, -0.6100],
+  [44.4400, -0.6000],
+  [44.4800, -0.5900],
+  [44.5200, -0.5700],
+  [44.5500, -0.5500],
+  [44.5800, -0.5200],
+  [44.6100, -0.4900],
+  [44.6400, -0.4600],
+  [44.6700, -0.4300],
+  [44.6930, -0.4060], // Back to Portets
 ];
 
-// SECTOR SUD (Julien) - Orange
-// Pessac + Bassin d'Arcachon + sud Gironde + Landes
+// ============================
+// SECTOR SUD (Julien) — Orange
+// Pessac + Bassin + ouest sud Gironde + Landes
+// ============================
 const sectorSouth = [
-  // Start at triple point (D106 / Garonne)
+  // Triple point
   [44.8280, -0.5600],
   // West along D106
   [44.8250, -0.5800],
@@ -296,29 +350,32 @@ const sectorSouth = [
   // South along coast
   coastW6,
   coastSW,
-  // Landes border
-  landesSW, landesS, landesSE,
-  captieux, bazasS, reoleS,
-  [44.5800, -0.0350], // La Réole
-  // Along Garonne NW (south/left bank)
-  [44.5700, -0.0800],
-  [44.5600, -0.1200],
-  [44.5530, -0.1800],
-  [44.5530, -0.2450],
-  [44.5650, -0.2800],
-  [44.5900, -0.3000],
-  [44.6100, -0.3100],
-  [44.6370, -0.3250],
-  [44.6520, -0.3570],
-  [44.6700, -0.3800],
-  [44.6930, -0.4060],
+  // Landes border (west part only — until SE boundary)
+  landesSW, landesS,
+  landesSE_julien, // S'arrête à -0.62 (frontière avec Gregory)
+  // North along SE boundary to Portets
+  [44.2400, -0.6200],
+  [44.2800, -0.6200],
+  [44.3200, -0.6200],
+  [44.3600, -0.6200],
+  [44.4000, -0.6100],
+  [44.4400, -0.6000],
+  [44.4800, -0.5900],
+  [44.5200, -0.5700],
+  [44.5500, -0.5500],
+  [44.5800, -0.5200],
+  [44.6100, -0.4900],
+  [44.6400, -0.4600],
+  [44.6700, -0.4300],
+  [44.6930, -0.4060], // Portets
+  // North along Garonne to triple point
   [44.7150, -0.4250],
   [44.7380, -0.4510],
   [44.7600, -0.4800],
   [44.7800, -0.5100],
   [44.7950, -0.5440],
   [44.8150, -0.5550],
-  [44.8280, -0.5600], // Back to triple point
+  [44.8280, -0.5600], // Triple point
 ];
 
 // ============================
@@ -326,43 +383,56 @@ const sectorSouth = [
 // ============================
 
 const nordOuestPoly = L.polygon(sectorNordOuest, {
-  color: '#1565C0', weight: 2, fillColor: '#42A5F5', fillOpacity: 0.20, dashArray: null
+  color: '#1565C0', weight: 2, fillColor: '#42A5F5', fillOpacity: 0.20
 }).addTo(map);
 
 const eastPoly = L.polygon(sectorEast, {
-  color: '#2E7D32', weight: 2, fillColor: '#66BB6A', fillOpacity: 0.20, dashArray: null
+  color: '#2E7D32', weight: 2, fillColor: '#66BB6A', fillOpacity: 0.20
 }).addTo(map);
 
 const southPoly = L.polygon(sectorSouth, {
-  color: '#E65100', weight: 2, fillColor: '#FFA726', fillOpacity: 0.20, dashArray: null
+  color: '#E65100', weight: 2, fillColor: '#FFA726', fillOpacity: 0.20
 }).addTo(map);
 
 // ============================
-// BOUNDARY LINES (thick, dashed)
+// BOUNDARY LINES
 // ============================
 
-// Garonne (Nord-Ouest ↔ Est) — from triple point to estuary
-const garonneLineNorth = [...garonneNorth, ...estuary];
-L.polyline(garonneLineNorth, {
+// Garonne north (David ↔ Gregory)
+L.polyline([...garonneNorth, ...estuary], {
   color: '#D32F2F', weight: 4, dashArray: '12, 8', opacity: 0.9
-}).addTo(map).bindPopup('<strong>Frontiere Garonne</strong><br>Separe Secteur NORD-OUEST (David) et Secteur EST (Gregory)');
+}).addTo(map).bindPopup('<strong>Garonne + Estuaire</strong><br>David (NORD-OUEST) ↔ Gregory (EST)');
 
-// Garonne (Est ↔ Sud) — from La Réole to triple point
-L.polyline(garonne, {
+// Garonne south: triple point → Portets (Julien ↔ Gregory)
+L.polyline(garonneToPortets, {
   color: '#D32F2F', weight: 4, dashArray: '12, 8', opacity: 0.9
-}).addTo(map).bindPopup('<strong>Frontiere Garonne</strong><br>Separe Secteur EST (Gregory) et Secteur SUD (Julien)');
+}).addTo(map).bindPopup('<strong>Garonne sud</strong><br>Julien (SUD) ↔ Gregory (EST)<br>Jusqu\'a Portets');
 
-// D106 Line (Nord-Ouest ↔ Sud) — from triple point to coast
+// Garonne Portets → La Réole (interne Gregory)
+L.polyline(garonnePortetsReole, {
+  color: '#2E7D32', weight: 2, dashArray: '6, 6', opacity: 0.5
+}).addTo(map).bindPopup('<strong>Garonne (interne Gregory)</strong><br>A partir de Portets, les 2 rives sont a Gregory');
+
+// SE boundary: Portets → Landes (Julien ↔ Gregory)
+L.polyline(seBoundary, {
+  color: '#D32F2F', weight: 4, dashArray: '12, 8', opacity: 0.9
+}).addTo(map).bindPopup('<strong>Frontiere Sud-Est</strong><br>Julien (SUD) ↔ Gregory (EST)<br>Portets → Saucats → Landes');
+
+// D106 (David ↔ Julien)
 L.polyline(d106Boundary, {
   color: '#D32F2F', weight: 4, dashArray: '12, 8', opacity: 0.9
-}).addTo(map).bindPopup('<strong>Frontiere D106</strong><br>Passe juste sous Merignac<br>Separe Secteur NORD-OUEST (David) et Secteur SUD (Julien)');
+}).addTo(map).bindPopup('<strong>D106</strong><br>David (NORD-OUEST) ↔ Julien (SUD)<br>Juste sous Merignac');
 
 // ============================
-// TRIPLE POINT marker
+// TRIPLE POINT + PORTETS MARKERS
 // ============================
 L.circleMarker([44.8280, -0.5600], {
   radius: 8, color: '#D32F2F', fillColor: '#D32F2F', fillOpacity: 1, weight: 2
 }).addTo(map).bindPopup('<strong>Point triple</strong><br>Jonction des 3 secteurs<br>(niveau Talence / D106)');
+
+L.circleMarker([44.6930, -0.4060], {
+  radius: 6, color: '#D32F2F', fillColor: '#FF8A65', fillOpacity: 1, weight: 2
+}).addTo(map).bindPopup('<strong>Bifurcation Portets</strong><br>La frontiere Julien/Gregory quitte la Garonne<br>et descend vers le sud');
 
 // ============================
 // HOME BASE MARKERS
@@ -380,8 +450,8 @@ function createHomeMarker(latlng, name, color, sector, details) {
 }
 
 createHomeMarker([44.8386, -0.6436], 'David — Merignac', '#1565C0', 'NORD-OUEST', 'Merignac + Medoc + nord rive gauche');
-createHomeMarker([44.8567, -0.4417], 'Gregory — Pompignac', '#2E7D32', 'EST', 'Rive droite + Libournais + Blayais');
-createHomeMarker([44.3833, -0.8167], 'Julien — Saugnac-et-Muret', '#E65100', 'SUD', 'Pessac + Bassin + sud Gironde + Landes<br>BNI Pessac');
+createHomeMarker([44.8567, -0.4417], 'Gregory — Pompignac', '#2E7D32', 'EST', 'Rive droite + Libournais + Blayais<br>+ Langon + Bazas + sud-est Gironde');
+createHomeMarker([44.3833, -0.8167], 'Julien — Saugnac-et-Muret', '#E65100', 'SUD', 'Pessac + Bassin + Landes<br>BNI Pessac');
 
 // BNI Pessac marker
 const bniIcon = L.divIcon({
@@ -394,7 +464,7 @@ L.marker([44.7930, -0.6350], { icon: bniIcon }).addTo(map)
   .bindPopup('<strong>BNI Pessac</strong><br>Julien y participe');
 
 // ============================
-// KEY CITY LABELS
+// CITY LABELS
 // ============================
 
 function addLabel(latlng, text, size) {
@@ -431,8 +501,10 @@ addLabel([44.8400, -0.4300], 'Pompignac');
 addLabel([44.8050, -0.5900], 'Talence');
 addLabel([44.7800, -0.6600], 'Gradignan');
 addLabel([44.7100, -0.7600], 'Le Barp');
+addLabel([44.6930, -0.4060], 'Portets', 10);
+addLabel([44.5700, -0.5300], 'Saucats', 10);
 
-// Sector labels (large, centered)
+// Sector labels
 function addSectorLabel(latlng, text, color) {
   L.marker(latlng, {
     icon: L.divIcon({
@@ -445,7 +517,7 @@ function addSectorLabel(latlng, text, color) {
 
 addSectorLabel([45.10, -0.95], 'SECTEUR NORD-OUEST', '#1565C0');
 addSectorLabel([44.95, -0.15], 'SECTEUR EST', '#2E7D32');
-addSectorLabel([44.40, -0.55], 'SECTEUR SUD', '#E65100');
+addSectorLabel([44.45, -0.90], 'SECTEUR SUD', '#E65100');
 
 // ============================
 // LEGEND
@@ -457,13 +529,13 @@ legend.onAdd = function() {
   div.innerHTML = `
     <h3>Sectorisation CDBA</h3>
     <div class="legend-item"><div class="legend-color" style="background:#42A5F5"></div> <strong>NORD-OUEST</strong> — David (Merignac)</div>
-    <div class="legend-item"><div class="legend-color" style="background:#66BB6A"></div> <strong>EST</strong> — Gregory (Pompignac)</div>
-    <div class="legend-item"><div class="legend-color" style="background:#FFA726"></div> <strong>SUD</strong> — Julien (Saugnac + BNI Pessac)</div>
+    <div class="legend-item"><div class="legend-color" style="background:#66BB6A"></div> <strong>EST</strong> — Gregory (Pompignac + Langon/Bazas)</div>
+    <div class="legend-item"><div class="legend-color" style="background:#FFA726"></div> <strong>SUD</strong> — Julien (Pessac + Bassin + Landes)</div>
     <div class="legend-separator"></div>
     <div class="legend-item"><div class="legend-color" style="background:transparent;border:2px dashed #D32F2F"></div> Frontieres de secteur</div>
-    <div class="legend-item"><div class="legend-color" style="background:#D32F2F;border-radius:50%"></div> Point triple (jonction)</div>
+    <div class="legend-item"><div class="legend-color" style="background:#D32F2F;border-radius:50%"></div> Points de jonction</div>
     <div class="legend-separator"></div>
-    <small>Frontiere Garonne (Est/Ouest) + D106 (David/Julien)<br>Mise a jour : 13 mars 2026</small>
+    <small>MAJ 13 mars 2026</small>
   `;
   return div;
 };
@@ -476,13 +548,16 @@ info.onAdd = function() {
   div.innerHTML = `
     <h3>Frontieres</h3>
     <table style="font-size:11px;width:100%;border-collapse:collapse;">
-      <tr><td style="padding:3px 0;"><strong>Garonne</strong></td><td>Nord-Ouest ↔ Est (metropole + aval)</td></tr>
-      <tr><td style="padding:3px 0;"><strong>D106</strong></td><td>Sous Merignac = Nord-Ouest (David) ↔ Sud (Julien)</td></tr>
-      <tr><td style="padding:3px 0;"><strong>Pessac</strong></td><td>Dans le secteur SUD (Julien, BNI Pessac)</td></tr>
-      <tr><td style="padding:3px 0;"><strong>Dept. 33/40</strong></td><td>Julien deborde naturellement dans les Landes</td></tr>
+      <tr><td style="padding:3px 0;"><strong>Garonne nord</strong></td><td>David ↔ Gregory (metropole + estuaire)</td></tr>
+      <tr><td style="padding:3px 0;"><strong>D106</strong></td><td>David ↔ Julien (sous Merignac)</td></tr>
+      <tr><td style="padding:3px 0;"><strong>Garonne sud</strong></td><td>Julien ↔ Gregory (jusqu'a Portets)</td></tr>
+      <tr><td style="padding:3px 0;"><strong>Ligne Portets-Sud</strong></td><td>Julien ↔ Gregory (Portets → Saucats → Landes)</td></tr>
     </table>
     <div class="rule">
-      <strong>Regle 6 mois :</strong> Client non exploite depuis 6 mois = reattribuable a un autre commercial.
+      <strong>Regle 6 mois :</strong> Client non exploite depuis 6 mois = reattribuable.
+    </div>
+    <div style="margin-top:8px;font-size:10px;color:#666;">
+      <strong>Equilibre :</strong> David ~290k (100% maisons) | Gregory ~320k (+ SE Gironde) | Julien ~340k (termites++)
     </div>
   `;
   return div;
@@ -490,7 +565,7 @@ info.onAdd = function() {
 info.addTo(map);
 
 // Hover effects
-function setupHover(poly, color, fillColor) {
+function setupHover(poly) {
   poly.on('mouseover', function() { this.setStyle({ fillOpacity: 0.35, weight: 3 }); });
   poly.on('mouseout', function() { this.setStyle({ fillOpacity: 0.20, weight: 2 }); });
 }
@@ -498,10 +573,10 @@ setupHover(nordOuestPoly);
 setupHover(eastPoly);
 setupHover(southPoly);
 
-// Popups on sector click
-nordOuestPoly.bindPopup('<strong>SECTEUR NORD-OUEST — David</strong><br>Merignac + Bruges + Blanquefort<br>Medoc + Lesparre + Pauillac<br>Nord rive gauche');
-eastPoly.bindPopup('<strong>SECTEUR EST — Gregory</strong><br>Rive droite + Libournais + Blayais<br>Entre-deux-Mers + Castillonnais<br>Periurbain + rural viticole');
-southPoly.bindPopup('<strong>SECTEUR SUD — Julien</strong><br>Pessac + Talence + Gradignan<br>Bassin d\'Arcachon + La Teste<br>Sud Gironde + Nord Landes<br>Fort potentiel termites 🐛<br>BNI Pessac');
+// Popups
+nordOuestPoly.bindPopup('<strong>SECTEUR NORD-OUEST — David</strong><br>~290k hab (quasi 100% maisons)<br>Merignac + Bruges + Blanquefort<br>Medoc + Lesparre + Pauillac');
+eastPoly.bindPopup('<strong>SECTEUR EST — Gregory</strong><br>~320k hab<br>Rive droite + Libournais + Blayais<br>+ Langon + Bazas + Captieux + La Reole<br>Entre-deux-Mers (2 rives sud Garonne)');
+southPoly.bindPopup('<strong>SECTEUR SUD — Julien</strong><br>~340k hab (fort potentiel termites)<br>Pessac + Talence + Gradignan<br>Bassin d\'Arcachon + Landes<br>BNI Pessac');
 </script>
 </body>
 </html>
