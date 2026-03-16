@@ -27,6 +27,11 @@
         </div>
     </header>
 
+    <div class="search-bar">
+        <input type="text" id="search-input" class="search-input" placeholder="Rechercher un client (nom, prénom)..." autocomplete="off">
+        <div id="search-no-result" class="search-no-result" style="display:none">Aucun chantier trouvé</div>
+    </div>
+
     <main class="board">
         {% for key, col in colonnes.items() %}
         <div class="board-column">
@@ -86,5 +91,55 @@
         </div>
         {% endfor %}
     </main>
+    <script>
+    (function() {
+        var input = document.getElementById('search-input');
+        var noResult = document.getElementById('search-no-result');
+        var cards = document.querySelectorAll('.card');
+        var emptyMsgs = document.querySelectorAll('.card-empty');
+
+        function normalize(str) {
+            return str.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+        }
+
+        input.addEventListener('input', function() {
+            var query = normalize(this.value.trim());
+            var totalVisible = 0;
+
+            cards.forEach(function(card) {
+                var title = card.querySelector('.card-title');
+                var subtitle = card.querySelector('.card-subtitle');
+                var text = normalize((title ? title.textContent : '') + ' ' + (subtitle ? subtitle.textContent : ''));
+
+                if (!query || text.indexOf(query) !== -1) {
+                    card.style.display = '';
+                    totalVisible++;
+                } else {
+                    card.style.display = 'none';
+                }
+            });
+
+            // Update column counts
+            document.querySelectorAll('.board-column').forEach(function(col) {
+                var visibleCards = col.querySelectorAll('.card:not([style*="display: none"])');
+                var count = col.querySelector('.column-count');
+                var empty = col.querySelector('.card-empty');
+                if (count) count.textContent = visibleCards.length;
+
+                // Show/hide per-column empty message
+                if (empty) {
+                    empty.style.display = visibleCards.length === 0 && query ? '' : 'none';
+                }
+            });
+
+            // Hide server-generated empty messages when not searching
+            emptyMsgs.forEach(function(msg) {
+                if (!query) msg.style.display = '';
+            });
+
+            noResult.style.display = (query && totalVisible === 0) ? '' : 'none';
+        });
+    })();
+    </script>
 </body>
 </html>

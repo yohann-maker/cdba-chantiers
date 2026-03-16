@@ -254,6 +254,43 @@ body {
     50% { opacity: 0.5; }
 }
 
+/* ── Search bar ── */
+
+.search-bar {
+    padding: 16px 20px 0;
+}
+
+.search-input {
+    width: 100%;
+    max-width: 400px;
+    padding: 10px 14px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--text);
+    font-size: 15px;
+    transition: border-color 0.2s;
+}
+
+.search-input:focus {
+    outline: none;
+    border-color: var(--primary);
+}
+
+.search-input::placeholder {
+    color: var(--text-muted);
+}
+
+.search-no-result {
+    margin-top: 12px;
+    padding: 10px 14px;
+    background: rgba(239, 68, 68, 0.1);
+    color: var(--red);
+    border-radius: 8px;
+    font-size: 14px;
+    max-width: 400px;
+}
+
 /* ── Board (Kanban) ── */
 
 .board {
