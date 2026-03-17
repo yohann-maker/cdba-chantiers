@@ -1550,6 +1550,27 @@ def _send_slack_recap_chantier(ch):
                 "text": {"type": "mrkdwn", "text": f"*📝 Note de {cmd.get('valide_par', 'Julien')} (commande) :*\n>{notes_cmd}"}
             })
 
+        # Photos Sellsy + photos uploadées manuellement
+        photos_urls = []
+        for f in ch.get("sellsy_files", []):
+            if f.get("is_image") and f.get("public_link"):
+                photos_urls.append((f["public_link"], f.get("name", "Photo Sellsy")))
+        for p in ch.get("photos", []):
+            if p.get("url"):
+                photos_urls.append((p["url"], p.get("name", "Photo chantier")))
+
+        if photos_urls:
+            blocks.append({
+                "type": "section",
+                "text": {"type": "mrkdwn", "text": f"*📸 Photos ({len(photos_urls)}) :*"}
+            })
+            for url, alt in photos_urls[:10]:  # Slack limite ~50 blocks, on cap à 10 photos
+                blocks.append({
+                    "type": "image",
+                    "image_url": url,
+                    "alt_text": alt,
+                })
+
         requests.post(SLACK_WEBHOOK_URL, json={"blocks": blocks}, timeout=5)
     except Exception as e:
         logger.warning(f"Erreur envoi Slack récap chantier : {e}")
