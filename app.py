@@ -390,7 +390,9 @@ class SellsyV2Client:
         files = []
         for f in data.get("data", []):
             ext = (f.get("extension", "") or "").lower()
+            file_id = str(f.get("id", ""))
             files.append({
+                "id": file_id,
                 "name": f.get("name", ""),
                 "extension": ext,
                 "size": f.get("size", 0),
@@ -399,6 +401,13 @@ class SellsyV2Client:
                 "created": f.get("created", ""),
             })
         return files
+
+    def get_file_public_link(self, file_id):
+        """Récupère le public_link frais d'un fichier Sellsy."""
+        data = self.get(f"/files/{file_id}")
+        if not data:
+            return None
+        return data.get("public_link") or None
 
 
 def get_sellsy_v2_client():
@@ -620,8 +629,10 @@ def sync_from_sellsy():
                 except Exception:
                     pass
 
-            # Mettre à jour les fichiers Sellsy
-            if v2_client and not chantiers[opp_id].get("sellsy_files"):
+            # Mettre à jour les fichiers Sellsy (re-fetch si pas d'id stocké)
+            existing_files = chantiers[opp_id].get("sellsy_files", [])
+            needs_refresh = not existing_files or (existing_files and not existing_files[0].get("id"))
+            if v2_client and needs_refresh:
                 try:
                     chantiers[opp_id]["sellsy_files"] = v2_client.get_opportunity_files(opp_id)
                 except Exception:
@@ -917,6 +928,21 @@ async def chantier_detail(request: Request, chantier_id: str):
         "ch": ch,
         "equipe": EQUIPE_PRODUCTION,
     })
+
+
+@app.get("/sellsy-file/{file_id}")
+async def sellsy_file_proxy(request: Request, file_id: str):
+    """Redirige vers le public_link Sellsy (récupéré en temps réel)."""
+    user = get_current_user(request)
+    if not user:
+        raise HTTPException(401, "Non autorisé")
+    v2_client = get_sellsy_v2_client()
+    if not v2_client:
+        raise HTTPException(503, "Client Sellsy non configuré")
+    public_link = v2_client.get_file_public_link(file_id)
+    if not public_link:
+        raise HTTPException(404, "Fichier non trouvé ou pas de lien public")
+    return RedirectResponse(public_link, status_code=302)
 
 
 @app.post("/chantier/{chantier_id}/preparation")
