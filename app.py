@@ -1690,6 +1690,7 @@ async def debug_chantier(request: Request, chantier_id: str):
         "preparation_validee": bool(ch.get("preparation", {}).get("valide_par")),
         "commande_validee": bool(ch.get("commande", {}).get("valide_par")),
         "env_slack": bool(SLACK_WEBHOOK_URL),
+        "sellsy_files": ch.get("sellsy_files", []),
     })
 
 
