@@ -105,7 +105,7 @@
                 {% for img in sellsy_images %}
                 <div class="photo-item">
                     {% set img_src = img.public_link if img.public_link else '/sellsy-file/' ~ img.id %}
-                    <img src="{{ img_src }}" alt="{{ img.name }}" loading="lazy" onclick="openPhoto(this.src)" onerror="this.style.display='none'">
+                    <img src="{{ img_src }}" alt="{{ img.name }}" loading="lazy" referrerpolicy="no-referrer" crossorigin="anonymous" onclick="openPhoto(this.src)">
                     <span class="photo-meta">{{ img.name }}.{{ img.extension }}</span>
                 </div>
                 {% endfor %}
