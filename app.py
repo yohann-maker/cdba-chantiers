@@ -932,17 +932,30 @@ async def chantier_detail(request: Request, chantier_id: str):
 
 @app.get("/sellsy-file/{file_id}")
 async def sellsy_file_proxy(request: Request, file_id: str):
-    """Redirige vers le public_link Sellsy (récupéré en temps réel)."""
+    """Proxy les images Sellsy pour éviter le blocage par les ad blockers."""
     user = get_current_user(request)
     if not user:
         raise HTTPException(401, "Non autorisé")
-    v2_client = get_sellsy_v2_client()
-    if not v2_client:
-        raise HTTPException(503, "Client Sellsy non configuré")
-    public_link = v2_client.get_file_public_link(file_id)
+    # Chercher le public_link dans les données stockées
+    chantiers = load_chantiers()
+    public_link = None
+    for ch in chantiers.values():
+        for f in ch.get("sellsy_files", []):
+            if str(f.get("id")) == file_id and f.get("public_link"):
+                public_link = f["public_link"]
+                break
+        if public_link:
+            break
     if not public_link:
-        raise HTTPException(404, "Fichier non trouvé ou pas de lien public")
-    return RedirectResponse(public_link, status_code=302)
+        raise HTTPException(404, "Fichier non trouvé")
+    # Télécharger et servir l'image directement
+    resp = requests.get(public_link, timeout=15)
+    if resp.status_code != 200:
+        raise HTTPException(502, "Impossible de récupérer le fichier")
+    content_type = resp.headers.get("Content-Type", "image/jpeg")
+    return Response(content=resp.content, media_type=content_type, headers={
+        "Cache-Control": "public, max-age=86400",
+    })
 
 
 @app.post("/chantier/{chantier_id}/preparation")
