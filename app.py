@@ -930,24 +930,23 @@ async def chantier_detail(request: Request, chantier_id: str):
     })
 
 
-@app.get("/sellsy-file/{file_id}")
-async def sellsy_file_proxy(request: Request, file_id: str):
+@app.get("/sellsy-file/{chantier_id}/{file_index}")
+async def sellsy_file_proxy(request: Request, chantier_id: str, file_index: int):
     """Proxy les images Sellsy pour éviter le blocage par les ad blockers."""
     user = get_current_user(request)
     if not user:
         raise HTTPException(401, "Non autorisé")
-    # Chercher le public_link dans les données stockées
     chantiers = load_chantiers()
-    public_link = None
-    for ch in chantiers.values():
-        for f in ch.get("sellsy_files", []):
-            if str(f.get("id")) == file_id and f.get("public_link"):
-                public_link = f["public_link"]
-                break
-        if public_link:
-            break
+    ch = chantiers.get(chantier_id)
+    if not ch:
+        raise HTTPException(404, "Chantier non trouvé")
+    # Filtrer uniquement les images (même logique que le template)
+    images = [f for f in ch.get("sellsy_files", []) if f.get("is_image")]
+    if file_index < 0 or file_index >= len(images):
+        raise HTTPException(404, "Image non trouvée")
+    public_link = images[file_index].get("public_link")
     if not public_link:
-        raise HTTPException(404, "Fichier non trouvé")
+        raise HTTPException(404, "Pas de lien public")
     # Télécharger et servir l'image directement
     resp = requests.get(public_link, timeout=15)
     if resp.status_code != 200:

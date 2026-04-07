@@ -104,7 +104,7 @@
             <div class="photos-grid">
                 {% for img in sellsy_images %}
                 <div class="photo-item">
-                    <img src="/sellsy-file/{{ img.id }}" alt="{{ img.name }}" loading="lazy" onclick="openPhoto(this.src)">
+                    <img src="/sellsy-file/{{ ch.id }}/{{ loop.index0 }}" alt="{{ img.name }}" loading="lazy" onclick="openPhoto(this.src)">
                     <span class="photo-meta">{{ img.name }}.{{ img.extension }}</span>
                 </div>
                 {% endfor %}
