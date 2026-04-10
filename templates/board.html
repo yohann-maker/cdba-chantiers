@@ -28,7 +28,10 @@
     </header>
 
     <div class="search-bar">
-        <input type="text" id="search-input" class="search-input" placeholder="Rechercher un client (nom, prénom)..." autocomplete="off">
+        <div class="search-input-wrap">
+            <input type="text" id="search-input" class="search-input" placeholder="Rechercher un client (nom, prénom)..." autocomplete="off">
+            <button type="button" id="search-clear" class="search-clear" style="display:none" aria-label="Effacer la recherche">×</button>
+        </div>
         <div id="search-no-result" class="search-no-result" style="display:none">Aucun chantier trouvé</div>
     </div>
 
@@ -94,16 +97,46 @@
     <script>
     (function() {
         var input = document.getElementById('search-input');
+        var clearBtn = document.getElementById('search-clear');
         var noResult = document.getElementById('search-no-result');
         var cards = document.querySelectorAll('.card');
         var emptyMsgs = document.querySelectorAll('.card-empty');
+
+        var STORAGE_KEY = 'cdba_chantiers_search';
+        var STORAGE_TS_KEY = 'cdba_chantiers_search_ts';
+        var MAX_AGE_MS = 30 * 60 * 1000;
 
         function normalize(str) {
             return str.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
         }
 
-        input.addEventListener('input', function() {
-            var query = normalize(this.value.trim());
+        function saveQuery(q) {
+            try {
+                if (q) {
+                    localStorage.setItem(STORAGE_KEY, q);
+                    localStorage.setItem(STORAGE_TS_KEY, String(Date.now()));
+                } else {
+                    localStorage.removeItem(STORAGE_KEY);
+                    localStorage.removeItem(STORAGE_TS_KEY);
+                }
+            } catch (e) { /* mode privé ou quota : on ignore */ }
+        }
+
+        function loadQuery() {
+            try {
+                var q = localStorage.getItem(STORAGE_KEY);
+                var ts = parseInt(localStorage.getItem(STORAGE_TS_KEY) || '0', 10);
+                if (q && ts && (Date.now() - ts) < MAX_AGE_MS) return q;
+                if (q) { // trop ancien, on nettoie
+                    localStorage.removeItem(STORAGE_KEY);
+                    localStorage.removeItem(STORAGE_TS_KEY);
+                }
+            } catch (e) { /* ignore */ }
+            return '';
+        }
+
+        function applyFilter() {
+            var query = normalize(input.value.trim());
             var totalVisible = 0;
 
             cards.forEach(function(card) {
@@ -138,7 +171,27 @@
             });
 
             noResult.style.display = (query && totalVisible === 0) ? '' : 'none';
+            clearBtn.style.display = input.value ? '' : 'none';
+        }
+
+        input.addEventListener('input', function() {
+            saveQuery(this.value.trim());
+            applyFilter();
         });
+
+        clearBtn.addEventListener('click', function() {
+            input.value = '';
+            saveQuery('');
+            applyFilter();
+            input.focus();
+        });
+
+        // Restauration après reload (utile pendant la sync auto-refresh)
+        var restored = loadQuery();
+        if (restored) {
+            input.value = restored;
+            applyFilter();
+        }
     })();
     </script>
 </body>
