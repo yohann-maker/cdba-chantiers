@@ -48,11 +48,70 @@ body { font-family: -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif; }
   background: white; padding: 24px 36px; border-radius: 12px;
   box-shadow: 0 4px 24px rgba(0,0,0,0.3); z-index: 9999; font-size: 15px;
 }
+
+/* Barre de recherche d'adresse */
+.search-panel {
+  position: fixed; top: 16px; left: 50%; transform: translateX(-50%);
+  background: white; border-radius: 12px;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.25);
+  padding: 12px 16px; z-index: 1000;
+  display: flex; align-items: center; gap: 10px;
+  width: min(560px, calc(100vw - 32px));
+}
+.search-panel input {
+  flex: 1; border: 1px solid #d4d4d8; border-radius: 8px;
+  padding: 10px 12px; font-size: 15px; outline: none;
+  font-family: inherit;
+}
+.search-panel input:focus { border-color: #2563eb; box-shadow: 0 0 0 2px rgba(37,99,235,0.15); }
+.search-panel button {
+  background: #1e293b; color: white; border: none; border-radius: 8px;
+  padding: 10px 16px; font-size: 15px; font-weight: 600; cursor: pointer;
+  font-family: inherit;
+}
+.search-panel button:hover { background: #0f172a; }
+.search-panel button:disabled { background: #94a3b8; cursor: not-allowed; }
+
+.search-result {
+  position: fixed; top: 76px; left: 50%; transform: translateX(-50%);
+  background: white; border-radius: 12px;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.25);
+  padding: 14px 18px; z-index: 1000;
+  width: min(560px, calc(100vw - 32px));
+  font-size: 14px; line-height: 1.5;
+  display: none;
+}
+.search-result.show { display: block; }
+.search-result .addr { color: #555; font-size: 13px; margin-bottom: 6px; }
+.search-result .sector-tag {
+  display: inline-block; padding: 6px 14px; border-radius: 6px;
+  color: white; font-weight: 800; font-size: 15px;
+  letter-spacing: 0.3px;
+}
+.search-result .commercial {
+  font-weight: 700; font-size: 16px; margin-left: 8px;
+}
+.search-result .close {
+  float: right; background: transparent; border: none; cursor: pointer;
+  font-size: 20px; color: #94a3b8; line-height: 1; padding: 0 4px;
+}
+.search-result .close:hover { color: #1e293b; }
+.search-result .error { color: #dc2626; font-weight: 600; }
 </style>
 </head>
 <body>
 <div id="map"></div>
 <div id="loading">Chargement de la carte...</div>
+
+<div class="search-panel">
+  <input id="addr-input" type="text" placeholder="Rechercher une adresse (ex: 12 rue Sainte-Catherine, Bordeaux)" autocomplete="off" />
+  <button id="addr-btn" type="button">Chercher</button>
+</div>
+<div class="search-result" id="addr-result">
+  <button class="close" id="addr-close" type="button" title="Fermer">×</button>
+  <div class="addr" id="addr-text"></div>
+  <div id="addr-sector"></div>
+</div>
 
 <script>
 // ==================== CONFIG ====================
@@ -251,6 +310,96 @@ main().catch(err => {
   document.getElementById('loading').innerHTML =
     `<b>Erreur :</b> ${err.message}<br><small>Vérifiez votre connexion.</small>`;
   console.error(err);
+});
+
+// ==================== ADDRESS SEARCH ====================
+function sectorForLatLng(lat, lng) {
+  if (lat > LAT_CUT && lng < LNG_CUT) return { label: 'NORD-OUEST', comm: DAVID };
+  if (lat > LAT_CUT && lng >= LNG_CUT) return { label: 'NORD-EST',   comm: GREGORY };
+  return { label: 'SUD', comm: JULIEN };
+}
+
+let searchMarker = null;
+
+async function searchAddress(query) {
+  const input = document.getElementById('addr-input');
+  const btn = document.getElementById('addr-btn');
+  const panel = document.getElementById('addr-result');
+  const addrText = document.getElementById('addr-text');
+  const sectorDiv = document.getElementById('addr-sector');
+
+  btn.disabled = true; btn.textContent = '...';
+
+  try {
+    // Bounded sur Nouvelle-Aquitaine + zones voisines pour tolérer marges
+    const url = `https://nominatim.openstreetmap.org/search?` + new URLSearchParams({
+      q: query, format: 'json', limit: '1', countrycodes: 'fr',
+      'accept-language': 'fr',
+      viewbox: '-2.5,47.0,2.5,42.5', bounded: '1'
+    });
+    const resp = await fetch(url, { headers: { 'Accept': 'application/json' } });
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    const data = await resp.json();
+
+    if (!data.length) {
+      addrText.innerHTML = '';
+      sectorDiv.innerHTML = `<span class="error">Adresse introuvable. Essayez avec ville + code postal.</span>`;
+      panel.classList.add('show');
+      return;
+    }
+
+    const r = data[0];
+    const lat = parseFloat(r.lat), lng = parseFloat(r.lon);
+    const sec = sectorForLatLng(lat, lng);
+
+    addrText.textContent = '📍 ' + r.display_name;
+    sectorDiv.innerHTML =
+      `<span class="sector-tag" style="background:${sec.comm.color}">${sec.label}</span>` +
+      `<span class="commercial" style="color:${sec.comm.color}">${sec.comm.name}</span>` +
+      `<div style="font-size:12px;color:#777;margin-top:6px">lat ${lat.toFixed(4)}° / lon ${lng.toFixed(4)}°</div>`;
+    panel.classList.add('show');
+
+    // Marker + zoom
+    if (searchMarker) map.removeLayer(searchMarker);
+    searchMarker = L.marker([lat, lng], {
+      icon: L.divIcon({
+        className: '',
+        html: `<div style="background:${sec.comm.color};color:white;border-radius:50%;` +
+              `width:34px;height:34px;display:flex;align-items:center;justify-content:center;` +
+              `font-size:20px;box-shadow:0 3px 10px rgba(0,0,0,0.5);border:3px solid white">📍</div>`,
+        iconSize: [34, 34], iconAnchor: [17, 17]
+      }),
+      zIndexOffset: 2000
+    }).addTo(map);
+    searchMarker.bindPopup(
+      `<b style="color:${sec.comm.color}">${sec.comm.name}</b> — secteur ${sec.label}<br>` +
+      `<small>${r.display_name}</small>`
+    ).openPopup();
+    map.setView([lat, lng], 11);
+  } catch (err) {
+    addrText.innerHTML = '';
+    sectorDiv.innerHTML = `<span class="error">Erreur : ${err.message}</span>`;
+    panel.classList.add('show');
+    console.error(err);
+  } finally {
+    btn.disabled = false; btn.textContent = 'Chercher';
+  }
+}
+
+document.getElementById('addr-btn').addEventListener('click', () => {
+  const q = document.getElementById('addr-input').value.trim();
+  if (q) searchAddress(q);
+});
+document.getElementById('addr-input').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') {
+    e.preventDefault();
+    const q = e.target.value.trim();
+    if (q) searchAddress(q);
+  }
+});
+document.getElementById('addr-close').addEventListener('click', () => {
+  document.getElementById('addr-result').classList.remove('show');
+  if (searchMarker) { map.removeLayer(searchMarker); searchMarker = null; }
 });
 </script>
 </body>
