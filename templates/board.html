@@ -50,7 +50,7 @@
                     {% set my_todo = true %}
                 {% elif user.username in ['julien'] and not ch.commande.get('valide_par') %}
                     {% set my_todo = true %}
-                {% elif user.username in ['gina', 'charlotte'] and not ch.programmation.get('valide_par') %}
+                {% elif user.username in ['gina', 'marina'] and not ch.programmation.get('valide_par') %}
                     {% set my_todo = true %}
                 {% elif user.username in ['yohann', 'olivier'] %}
                     {% set my_todo = not ch.preparation.get('valide_par') or not ch.commande.get('valide_par') or not ch.programmation.get('valide_par') %}

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 CDBA — App Préparation Chantiers
-Workflow : Sellsy → William (prépa) → Julien (commande) → Gina/Charlotte (planning) → Prêt
+Workflow : Sellsy → William (prépa) → Julien (commande) → Gina/Marina (planning) → Prêt
 """
 
 import json
@@ -50,7 +50,7 @@ USERS = {
     "william": {"name": "William", "role": "preparateur", "password": os.getenv("PASS_WILLIAM", "cdba2026")},
     "julien": {"name": "Julien", "role": "acheteur", "password": os.getenv("PASS_JULIEN", "cdba2026")},
     "gina": {"name": "Gina", "role": "planificatrice", "password": os.getenv("PASS_GINA", "cdba2026")},
-    "charlotte": {"name": "Charlotte", "role": "planificatrice", "password": os.getenv("PASS_CHARLOTTE", "cdba2026")},
+    "marina": {"name": "Marina", "role": "planificatrice", "password": os.getenv("PASS_MARINA", "cdba2026")},
     "yohann": {"name": "Yohann", "role": "admin", "password": os.getenv("PASS_YOHANN", "cdba2026")},
     "olivier": {"name": "Olivier", "role": "admin", "password": os.getenv("PASS_OLIVIER", "cdba2026")},
 }
