@@ -877,6 +877,10 @@ async def board(request: Request):
     chantiers = load_chantiers()
     syncing = _sync_running
 
+    show_old = request.query_params.get("show_old") == "1"
+    cutoff = datetime.now() - timedelta(days=30)
+    masques_count = 0
+
     colonnes = {
         "en_cours": {"label": "En cours", "color": "#f97316", "icon": "🟠", "chantiers": []},
         "pret": {"label": "Prêt", "color": "#22c55e", "icon": "🟢", "chantiers": []},
@@ -894,6 +898,15 @@ async def board(request: Request):
         # Chantier marqué terminé = colonne terminé
         if ch.get("termine", {}).get("valide_par"):
             ch["etape"] = "termine"
+            # Masquage des terminés > 30j (sauf si show_old=1)
+            valide_le = ch.get("termine", {}).get("valide_le", "")
+            if not show_old and valide_le:
+                try:
+                    if datetime.fromisoformat(valide_le) < cutoff:
+                        masques_count += 1
+                        continue
+                except ValueError:
+                    pass
             colonnes["termine"]["chantiers"].append(ch)
             continue
         # Recalculer l'étape
@@ -908,6 +921,8 @@ async def board(request: Request):
         "colonnes": colonnes,
         "equipe": EQUIPE_PRODUCTION,
         "syncing": syncing,
+        "show_old": show_old,
+        "masques_count": masques_count,
     })
 
 
@@ -1470,6 +1485,58 @@ async def save_termine(
 
     save_chantiers(chantiers)
     return RedirectResponse(f"/chantier/{chantier_id}", status_code=302)
+
+
+@app.post("/chantier/{chantier_id}/move")
+async def move_chantier(request: Request, chantier_id: str, etape: str = Form(...)):
+    """Déplacement manuel d'un chantier (drag&drop kanban) — sans Calendar ni récap.
+    Trace dans l'historique qui a fait le déplacement."""
+    user = get_current_user(request)
+    if not user:
+        raise HTTPException(401)
+
+    if etape not in ("en_cours", "pret", "termine"):
+        raise HTTPException(400, "Étape invalide")
+
+    chantiers = load_chantiers()
+    ch = chantiers.get(chantier_id)
+    if not ch:
+        raise HTTPException(404)
+
+    ancienne = ch.get("etape", "en_cours")
+    now_iso = datetime.now().isoformat()
+
+    if etape == "termine":
+        ch["termine"] = {
+            "jours_reels": ch.get("preparation", {}).get("nb_jours", 0),
+            "jours_prevus": ch.get("preparation", {}).get("nb_jours", 0),
+            "notes": "Déplacé manuellement (sans Calendar)",
+            "valide_par": user["name"],
+            "valide_le": now_iso,
+            "mode": "manuel",
+        }
+        action = f"Déplacé manuellement vers Terminé (sans Calendar)"
+
+    elif etape == "en_cours":
+        if ch.get("termine", {}).get("valide_par"):
+            ch["termine"] = {}
+            action = "Remis en cours depuis Terminé"
+        else:
+            action = "Déplacé vers En cours"
+
+    elif etape == "pret":
+        if ch.get("termine", {}).get("valide_par"):
+            ch["termine"] = {}
+        action = "Déplacé manuellement vers Prêt"
+
+    ch["etape"] = etape
+    ch.setdefault("historique", []).append({
+        "action": action,
+        "par": user["name"],
+        "date": now_iso,
+    })
+    save_chantiers(chantiers)
+    return JSONResponse({"ok": True, "ancienne_etape": ancienne, "nouvelle_etape": etape})
 
 
 @app.post("/chantier/{chantier_id}/reset/{step}")

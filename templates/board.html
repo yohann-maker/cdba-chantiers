@@ -15,6 +15,11 @@
             <h1 class="topbar-title">CDBA Chantiers</h1>
         </div>
         <div class="topbar-right">
+            {% if show_old %}
+            <a href="/board" class="btn btn-small btn-ghost" title="Masquer les chantiers terminés depuis plus de 30 jours">Masquer anciens</a>
+            {% elif masques_count > 0 %}
+            <a href="/board?show_old=1" class="btn btn-small btn-ghost" title="Afficher les chantiers terminés depuis plus de 30 jours">Voir +{{ masques_count }} anciens</a>
+            {% endif %}
             {% if syncing %}
             <span class="sync-badge">Sync en cours...</span>
             {% else %}
@@ -37,7 +42,7 @@
 
     <main class="board">
         {% for key, col in colonnes.items() %}
-        <div class="board-column">
+        <div class="board-column" data-etape="{{ key }}">
             <div class="column-header" style="border-top: 4px solid {{ col.color }}">
                 <span class="column-icon">{{ col.icon }}</span>
                 <span class="column-title">{{ col.label }}</span>
@@ -55,7 +60,7 @@
                 {% elif user.username in ['yohann', 'olivier'] %}
                     {% set my_todo = not ch.preparation.get('valide_par') or not ch.commande.get('valide_par') or not ch.programmation.get('valide_par') %}
                 {% endif %}
-                <a href="/chantier/{{ ch.id }}" class="card {{ 'card-todo' if my_todo else 'card-done-user' }}">
+                <a href="/chantier/{{ ch.id }}" class="card {{ 'card-todo' if my_todo else 'card-done-user' }}" draggable="true" data-id="{{ ch.id }}" data-client="{{ ch.sellsy.client or ch.sellsy.nom }}">
                     {% if my_todo %}
                     <div class="card-todo-badge">À FAIRE</div>
                     {% else %}
@@ -192,6 +197,76 @@
             input.value = restored;
             applyFilter();
         }
+    })();
+    </script>
+
+    <script>
+    // Drag & drop entre colonnes du kanban
+    (function() {
+        var draggedId = null;
+        var draggedClient = null;
+
+        document.querySelectorAll('.card[draggable="true"]').forEach(function(card) {
+            card.addEventListener('dragstart', function(e) {
+                draggedId = card.dataset.id;
+                draggedClient = card.dataset.client || 'ce chantier';
+                card.classList.add('dragging');
+                try { e.dataTransfer.setData('text/plain', draggedId); } catch (err) {}
+                e.dataTransfer.effectAllowed = 'move';
+            });
+            card.addEventListener('dragend', function() {
+                card.classList.remove('dragging');
+                document.querySelectorAll('.board-column.drag-over').forEach(function(c) {
+                    c.classList.remove('drag-over');
+                });
+            });
+        });
+
+        document.querySelectorAll('.board-column').forEach(function(col) {
+            col.addEventListener('dragover', function(e) {
+                if (!draggedId) return;
+                e.preventDefault();
+                e.dataTransfer.dropEffect = 'move';
+                col.classList.add('drag-over');
+            });
+            col.addEventListener('dragleave', function(e) {
+                if (e.target === col || e.target.classList.contains('column-cards')) {
+                    col.classList.remove('drag-over');
+                }
+            });
+            col.addEventListener('drop', function(e) {
+                e.preventDefault();
+                col.classList.remove('drag-over');
+                if (!draggedId) return;
+                var etape = col.dataset.etape;
+                var labels = {en_cours: 'En cours', pret: 'Prêt', termine: 'Terminé'};
+                var label = labels[etape] || etape;
+                var msg = 'Déplacer "' + draggedClient + '" vers "' + label + '" ?';
+                if (etape === 'termine') {
+                    msg += '\n\n⚠️ Le chantier sera marqué TERMINÉ sans création d\'événement Google Calendar.';
+                }
+                if (!confirm(msg)) {
+                    draggedId = null;
+                    return;
+                }
+                var fd = new FormData();
+                fd.append('etape', etape);
+                fetch('/chantier/' + draggedId + '/move', {
+                    method: 'POST',
+                    body: fd,
+                    credentials: 'same-origin'
+                }).then(function(r) {
+                    if (r.ok) {
+                        location.reload();
+                    } else {
+                        alert('Erreur lors du déplacement (HTTP ' + r.status + ')');
+                    }
+                }).catch(function(err) {
+                    alert('Erreur réseau : ' + err.message);
+                });
+                draggedId = null;
+            });
+        });
     })();
     </script>
 </body>
