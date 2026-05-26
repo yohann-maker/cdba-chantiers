@@ -909,6 +909,11 @@ async def board(request: Request):
                     pass
             colonnes["termine"]["chantiers"].append(ch)
             continue
+        # Étape manuelle forcée via drag&drop (prévaut sur le recalcul auto)
+        if ch.get("etape_manuelle") in ("en_cours", "pret"):
+            ch["etape"] = ch["etape_manuelle"]
+            colonnes[ch["etape_manuelle"]]["chantiers"].append(ch)
+            continue
         # Recalculer l'étape
         etape = _compute_etape(ch)
         ch["etape"] = etape
@@ -1530,6 +1535,7 @@ async def move_chantier(request: Request, chantier_id: str, etape: str = Form(..
         action = "Déplacé manuellement vers Prêt"
 
     ch["etape"] = etape
+    ch["etape_manuelle"] = etape  # force l'étape dans le kanban (prévaut sur _compute_etape)
     ch.setdefault("historique", []).append({
         "action": action,
         "par": user["name"],
