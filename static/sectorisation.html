@@ -60,14 +60,12 @@ body { font-family: -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif; }
 }
 .search-panel input {
   flex: 1; border: 1px solid #d4d4d8; border-radius: 8px;
-  padding: 10px 12px; font-size: 15px; outline: none;
-  font-family: inherit;
+  padding: 10px 12px; font-size: 15px; outline: none; font-family: inherit;
 }
 .search-panel input:focus { border-color: #2563eb; box-shadow: 0 0 0 2px rgba(37,99,235,0.15); }
 .search-panel button {
   background: #1e293b; color: white; border: none; border-radius: 8px;
-  padding: 10px 16px; font-size: 15px; font-weight: 600; cursor: pointer;
-  font-family: inherit;
+  padding: 10px 16px; font-size: 15px; font-weight: 600; cursor: pointer; font-family: inherit;
 }
 .search-panel button:hover { background: #0f172a; }
 .search-panel button:disabled { background: #94a3b8; cursor: not-allowed; }
@@ -78,19 +76,15 @@ body { font-family: -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif; }
   box-shadow: 0 4px 20px rgba(0,0,0,0.25);
   padding: 14px 18px; z-index: 1000;
   width: min(560px, calc(100vw - 32px));
-  font-size: 14px; line-height: 1.5;
-  display: none;
+  font-size: 14px; line-height: 1.5; display: none;
 }
 .search-result.show { display: block; }
 .search-result .addr { color: #555; font-size: 13px; margin-bottom: 6px; }
 .search-result .sector-tag {
   display: inline-block; padding: 6px 14px; border-radius: 6px;
-  color: white; font-weight: 800; font-size: 15px;
-  letter-spacing: 0.3px;
+  color: white; font-weight: 800; font-size: 15px; letter-spacing: 0.3px;
 }
-.search-result .commercial {
-  font-weight: 700; font-size: 16px; margin-left: 8px;
-}
+.search-result .commercial { font-weight: 700; font-size: 16px; margin-left: 8px; }
 .search-result .close {
   float: right; background: transparent; border: none; cursor: pointer;
   font-size: 20px; color: #94a3b8; line-height: 1; padding: 0 4px;
@@ -116,38 +110,28 @@ body { font-family: -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif; }
 <script>
 // ==================== CONFIG ====================
 const BLUE   = '#2563eb';
-const GREEN  = '#16a34a';
 const ORANGE = '#ea580c';
 
-const DAVID   = { color: BLUE,   name: 'David',   city: 'Mérignac',         lat: 44.8386, lng: -0.6443 };
-const GREGORY = { color: GREEN,  name: 'Gregory', city: 'Pompignac',        lat: 44.8560, lng: -0.4170 };
-const JULIEN  = { color: ORANGE, name: 'Julien',  city: 'Saugnac-et-Muret', lat: 44.3667, lng: -0.7167 };
+const DAVID  = { color: BLUE,   name: 'David',  city: 'Mérignac',         lat: 44.8386, lng: -0.6443 };
+const JULIEN = { color: ORANGE, name: 'Julien', city: 'Saugnac-et-Muret', lat: 44.3667, lng: -0.7167 };
 
-// ==================== ZONE BOUNDARIES ====================
-// 2 lignes droites = 3 zones, ultra simple
-const LAT_CUT = 44.55;   // Ligne horizontale (niveau Langon)
-const LNG_CUT = -0.50;   // Ligne verticale (entre Mérignac et Pompignac)
+// ==================== ZONE BOUNDARY ====================
+// 1 SEULE ligne horizontale = 2 zones. David Nord, Julien Sud.
+// Ligne calculée pour un partage 50/50 du portefeuille (769 clients géolocalisés).
+// MAJ 28/05/2026 : départ de Gregory, refonte 3 zones → 2 zones.
+const LAT_CUT = 44.82;   // sud immédiat de Bordeaux — 49% Nord / 51% Sud
 
-// 3 grandes zones couvrant toute la Nouvelle-Aquitaine
 const ZONES = [
   {
-    id: 'nw', label: 'NORD-OUEST', comm: DAVID,
-    // Au-dessus de LAT_CUT, à l'ouest de LNG_CUT
-    poly: [[-4, LAT_CUT], [LNG_CUT, LAT_CUT], [LNG_CUT, 48], [-4, 48], [-4, LAT_CUT]]
-  },
-  {
-    id: 'ne', label: 'NORD-EST', comm: GREGORY,
-    // Au-dessus de LAT_CUT, à l'est de LNG_CUT
-    poly: [[LNG_CUT, LAT_CUT], [3, LAT_CUT], [3, 48], [LNG_CUT, 48], [LNG_CUT, LAT_CUT]]
+    id: 'n', label: 'NORD', comm: DAVID,
+    poly: [[-4, LAT_CUT], [3, LAT_CUT], [3, 48], [-4, 48], [-4, LAT_CUT]]
   },
   {
     id: 's', label: 'SUD', comm: JULIEN,
-    // En-dessous de LAT_CUT (toute la largeur)
     poly: [[-4, 42], [3, 42], [3, LAT_CUT], [-4, LAT_CUT], [-4, 42]]
   }
 ];
 
-// Départements à charger
 const DEPT_SLUGS = [
   '16-charente', '17-charente-maritime', '24-dordogne',
   '33-gironde', '40-landes', '47-lot-et-garonne', '64-pyrenees-atlantiques'
@@ -155,15 +139,13 @@ const DEPT_SLUGS = [
 const GEO_URL = 'https://raw.githubusercontent.com/gregoiredavid/france-geojson/master/departements';
 
 // ==================== MAP ====================
-const map = L.map('map', { zoomControl: true }).setView([44.8, -0.2], 7);
-
+const map = L.map('map', { zoomControl: true }).setView([44.6, -0.2], 7);
 L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
   attribution: '&copy; CARTO &copy; OSM', maxZoom: 19, subdomains: 'abcd'
 }).addTo(map);
 
 // ==================== MAIN ====================
 async function main() {
-  // 1. Fetch all departments in parallel
   const deptFeatures = [];
   await Promise.all(DEPT_SLUGS.map(async (slug) => {
     const resp = await fetch(`${GEO_URL}/${slug}/departement-${slug}.geojson`);
@@ -175,16 +157,13 @@ async function main() {
     deptFeatures.push(feat);
   }));
 
-  // 2. For each department × each zone, compute intersection and display
   const zoneTurfPolys = ZONES.map(z => turf.polygon([z.poly]));
 
   for (const dept of deptFeatures) {
-    // Draw department outline (thin, neutral)
     L.geoJSON(dept, {
       style: { color: '#999', weight: 1.5, fillColor: 'transparent', fillOpacity: 0 }
     }).addTo(map);
 
-    // Intersect with each zone
     for (let i = 0; i < ZONES.length; i++) {
       let inter = null;
       try {
@@ -201,34 +180,19 @@ async function main() {
     }
   }
 
-  // 3. Division lines — épaisses et visibles
-  // Ligne horizontale (toute la largeur)
-  L.polyline([[LAT_CUT, -2], [LAT_CUT, 2]], {
-    color: '#1e293b', weight: 4, opacity: 0.6
+  // Ligne de division unique (horizontale, toute la largeur)
+  L.polyline([[LAT_CUT, -3], [LAT_CUT, 3]], {
+    color: '#1e293b', weight: 4, opacity: 0.7
   }).addTo(map);
 
-  // Ligne verticale (du point d'intersection vers le nord)
-  L.polyline([[LAT_CUT, LNG_CUT], [47, LNG_CUT]], {
-    color: '#1e293b', weight: 4, opacity: 0.6
-  }).addTo(map);
+  // Zone labels
+  addZoneTag(45.65, -0.30, 'NORD', DAVID);
+  addZoneTag(43.70, -0.30, 'SUD', JULIEN);
+  addSubLabel(45.45, -0.30, 'David', DAVID.color);
+  addSubLabel(43.50, -0.30, 'Julien', JULIEN.color);
 
-  // Point d'intersection
-  L.circleMarker([LAT_CUT, LNG_CUT], {
-    radius: 8, color: '#1e293b', fillColor: 'white', fillOpacity: 1, weight: 3
-  }).addTo(map);
-
-  // 4. Zone labels — gros et lisibles
-  addZoneTag(45.65, -1.10, 'NORD-OUEST', DAVID);
-  addZoneTag(45.50, 0.40, 'NORD-EST', GREGORY);
-  addZoneTag(43.80, -0.30, 'SUD', JULIEN);
-
-  // Sub-labels avec le nom du commercial
-  addSubLabel(45.45, -1.10, 'David', DAVID.color);
-  addSubLabel(45.30, 0.40, 'Gregory', GREGORY.color);
-  addSubLabel(43.60, -0.30, 'Julien', JULIEN.color);
-
-  // 5. Home markers
-  [DAVID, GREGORY, JULIEN].forEach(c => {
+  // Home markers
+  [DAVID, JULIEN].forEach(c => {
     L.marker([c.lat, c.lng], {
       icon: L.divIcon({
         className: '',
@@ -237,7 +201,6 @@ async function main() {
       }),
       zIndexOffset: 1000
     }).addTo(map);
-
     L.marker([c.lat - 0.06, c.lng], {
       icon: L.divIcon({
         className: '',
@@ -257,23 +220,23 @@ async function main() {
     zIndexOffset: 1000
   }).addTo(map).bindTooltip('Julien y va — Olivier accompagne', { offset: [0, -15], direction: 'top' });
 
-  // 6. Legend
+  // Legend
   const legend = L.control({ position: 'topright' });
   legend.onAdd = function () {
     const d = L.DomUtil.create('div', 'legend');
     d.innerHTML = `
       <h3>Sectorisation CDBA</h3>
-      <div class="legend-row"><div class="legend-swatch" style="background:${BLUE}"></div><b>David</b> — Nord-Ouest</div>
-      <div class="legend-row"><div class="legend-swatch" style="background:${GREEN}"></div><b>Gregory</b> — Nord-Est</div>
+      <div class="legend-row"><div class="legend-swatch" style="background:${BLUE}"></div><b>David</b> — Nord</div>
       <div class="legend-row"><div class="legend-swatch" style="background:${ORANGE}"></div><b>Julien</b> — Sud</div>
       <div class="legend-sep"></div>
       <small>
-        2 lignes de découpe : lat ${LAT_CUT}° / lon ${LNG_CUT}°<br>
+        1 ligne de découpe : lat ${LAT_CUT}° (sud de Bordeaux)<br>
+        Partage 50/50 du portefeuille (~378 Nord / ~391 Sud)<br>
         🏠 Domicile &nbsp; <span style="color:#dc2626;font-weight:700">BNI</span> Réseau<br>
         Client dormant 6 mois = réattribuable<br>
         <b style="color:#dc2626">Règle BNI</b> : un commercial peut intervenir<br>
-        sur un autre secteur si le lead vient du BNI.<br><br>
-        MAJ 13 mars 2026
+        sur l'autre secteur si le lead vient du BNI.<br><br>
+        MAJ 28 mai 2026
       </small>
     `;
     return d;
@@ -314,52 +277,40 @@ main().catch(err => {
 
 // ==================== ADDRESS SEARCH ====================
 function sectorForLatLng(lat, lng) {
-  if (lat > LAT_CUT && lng < LNG_CUT) return { label: 'NORD-OUEST', comm: DAVID };
-  if (lat > LAT_CUT && lng >= LNG_CUT) return { label: 'NORD-EST',   comm: GREGORY };
+  if (lat >= LAT_CUT) return { label: 'NORD', comm: DAVID };
   return { label: 'SUD', comm: JULIEN };
 }
 
 let searchMarker = null;
 
 async function searchAddress(query) {
-  const input = document.getElementById('addr-input');
   const btn = document.getElementById('addr-btn');
   const panel = document.getElementById('addr-result');
   const addrText = document.getElementById('addr-text');
   const sectorDiv = document.getElementById('addr-sector');
-
   btn.disabled = true; btn.textContent = '...';
-
   try {
-    // Bounded sur Nouvelle-Aquitaine + zones voisines pour tolérer marges
     const url = `https://nominatim.openstreetmap.org/search?` + new URLSearchParams({
       q: query, format: 'json', limit: '1', countrycodes: 'fr',
-      'accept-language': 'fr',
-      viewbox: '-2.5,47.0,2.5,42.5', bounded: '1'
+      'accept-language': 'fr', viewbox: '-2.5,47.0,2.5,42.5', bounded: '1'
     });
     const resp = await fetch(url, { headers: { 'Accept': 'application/json' } });
     if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
     const data = await resp.json();
-
     if (!data.length) {
       addrText.innerHTML = '';
       sectorDiv.innerHTML = `<span class="error">Adresse introuvable. Essayez avec ville + code postal.</span>`;
-      panel.classList.add('show');
-      return;
+      panel.classList.add('show'); return;
     }
-
     const r = data[0];
     const lat = parseFloat(r.lat), lng = parseFloat(r.lon);
     const sec = sectorForLatLng(lat, lng);
-
     addrText.textContent = '📍 ' + r.display_name;
     sectorDiv.innerHTML =
       `<span class="sector-tag" style="background:${sec.comm.color}">${sec.label}</span>` +
       `<span class="commercial" style="color:${sec.comm.color}">${sec.comm.name}</span>` +
       `<div style="font-size:12px;color:#777;margin-top:6px">lat ${lat.toFixed(4)}° / lon ${lng.toFixed(4)}°</div>`;
     panel.classList.add('show');
-
-    // Marker + zoom
     if (searchMarker) map.removeLayer(searchMarker);
     searchMarker = L.marker([lat, lng], {
       icon: L.divIcon({
@@ -379,8 +330,7 @@ async function searchAddress(query) {
   } catch (err) {
     addrText.innerHTML = '';
     sectorDiv.innerHTML = `<span class="error">Erreur : ${err.message}</span>`;
-    panel.classList.add('show');
-    console.error(err);
+    panel.classList.add('show'); console.error(err);
   } finally {
     btn.disabled = false; btn.textContent = 'Chercher';
   }
@@ -391,11 +341,7 @@ document.getElementById('addr-btn').addEventListener('click', () => {
   if (q) searchAddress(q);
 });
 document.getElementById('addr-input').addEventListener('keydown', (e) => {
-  if (e.key === 'Enter') {
-    e.preventDefault();
-    const q = e.target.value.trim();
-    if (q) searchAddress(q);
-  }
+  if (e.key === 'Enter') { e.preventDefault(); const q = e.target.value.trim(); if (q) searchAddress(q); }
 });
 document.getElementById('addr-close').addEventListener('click', () => {
   document.getElementById('addr-result').classList.remove('show');
