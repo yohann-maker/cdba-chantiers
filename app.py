@@ -236,8 +236,6 @@ def create_calendar_events(ch):
     mobile = sellsy.get("mobile", "")
     adresse = sellsy.get("adresse", "")
     commercial = sellsy.get("commercial", "")
-    nb_personnes = preparation.get("nb_personnes", "")
-    equipe_noms = ", ".join(equipe)
 
     # Description complète
     desc_lines = []
@@ -248,7 +246,6 @@ def create_calendar_events(ch):
     desc_lines.append(f"Montant : {montant:,.0f} € HT".replace(",", " "))
     if commercial:
         desc_lines.append(f"Commercial : {commercial}")
-    desc_lines.append(f"Équipe : {equipe_noms} ({nb_personnes} pers.)")
     desc_lines.append(f"Durée : {nb_jours} jour(s)")
     # Lien vers la fiche chantier complète (prestations + photos), sans login
     fiche_url = f"{APP_BASE_URL}/fiche/{ch['id']}?t={fiche_token(ch['id'])}"
