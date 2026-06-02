@@ -27,6 +27,9 @@ logger = logging.getLogger("cdba")
 # Slack webhook pour notifier les ouvriers (canal #bdc-et-photos-chantiers)
 SLACK_WEBHOOK_URL = os.getenv("SLACK_WEBHOOK_CHANTIERS", "")
 
+# URL publique de l'app (pour fabriquer les liens vers les fiches chantier)
+APP_BASE_URL = os.getenv("APP_BASE_URL", "https://cdba-chantiers-production.up.railway.app").rstrip("/")
+
 # ──────────────────────────────────────────────────────
 # CONFIG
 # ──────────────────────────────────────────────────────
@@ -247,6 +250,11 @@ def create_calendar_events(ch):
         desc_lines.append(f"Commercial : {commercial}")
     desc_lines.append(f"Équipe : {equipe_noms} ({nb_personnes} pers.)")
     desc_lines.append(f"Durée : {nb_jours} jour(s)")
+    # Lien vers la fiche chantier complète (prestations + photos), sans login
+    fiche_url = f"{APP_BASE_URL}/fiche/{ch['id']}?t={fiche_token(ch['id'])}"
+    desc_lines.append("")
+    desc_lines.append("📋 Fiche chantier (détails + photos) :")
+    desc_lines.append(fiche_url)
     description = "\n".join(desc_lines)
 
     # Détection doublons + création
@@ -773,6 +781,16 @@ def make_token(username):
     return hashlib.sha256(f"{username}:{secret}".encode()).hexdigest()[:32]
 
 
+def fiche_token(chantier_id):
+    """Token non devinable pour accéder à la fiche chantier publique (sans login).
+
+    Stable par chantier (pas de stockage) : permet de partager le lien dans
+    l'agenda Google et que les ouvriers l'ouvrent sans mot de passe.
+    """
+    secret = os.getenv("SESSION_SECRET", "cdba-chantiers-2026")
+    return hashlib.sha256(f"fiche:{chantier_id}:{secret}".encode()).hexdigest()[:16]
+
+
 def get_current_user(request: Request):
     token = request.cookies.get("session")
     if not token:
@@ -947,15 +965,20 @@ async def chantier_detail(request: Request, chantier_id: str):
         "user": user,
         "ch": ch,
         "equipe": EQUIPE_PRODUCTION,
+        "fiche_url": f"/fiche/{chantier_id}?t={fiche_token(chantier_id)}",
     })
 
 
 @app.get("/sellsy-file/{chantier_id}/{file_index}")
-async def sellsy_file_proxy(request: Request, chantier_id: str, file_index: int):
-    """Proxy les images Sellsy pour éviter le blocage par les ad blockers."""
-    user = get_current_user(request)
-    if not user:
-        raise HTTPException(401, "Non autorisé")
+async def sellsy_file_proxy(request: Request, chantier_id: str, file_index: int, t: str = ""):
+    """Proxy les images Sellsy pour éviter le blocage par les ad blockers.
+
+    Accès : utilisateur connecté OU token de fiche valide (lien agenda ouvrier).
+    """
+    if t != fiche_token(chantier_id):
+        user = get_current_user(request)
+        if not user:
+            raise HTTPException(401, "Non autorisé")
     chantiers = load_chantiers()
     ch = chantiers.get(chantier_id)
     if not ch:
@@ -974,6 +997,49 @@ async def sellsy_file_proxy(request: Request, chantier_id: str, file_index: int)
     content_type = resp.headers.get("Content-Type", "image/jpeg")
     return Response(content=resp.content, media_type=content_type, headers={
         "Cache-Control": "public, max-age=86400",
+    })
+
+
+@app.get("/fiche/{chantier_id}", response_class=HTMLResponse)
+async def fiche_publique(request: Request, chantier_id: str, t: str = ""):
+    """Fiche chantier publique pour les ouvriers (accès par token, sans login).
+
+    Ouvre directement une page propre (imprimable en PDF) avec tous les détails
+    de l'intervention + les photos. Lien inséré dans l'event Google Agenda.
+    """
+    if t != fiche_token(chantier_id):
+        raise HTTPException(403, "Lien invalide ou expiré")
+    chantiers = load_chantiers()
+    ch = chantiers.get(chantier_id)
+    if not ch:
+        raise HTTPException(404, "Chantier non trouvé")
+
+    sellsy = ch.get("sellsy", {})
+    # Adresse pour lien itinéraire Google Maps
+    adresse = sellsy.get("adresse", "")
+    ville = sellsy.get("ville", "")
+    cp = sellsy.get("cp", "")
+    adresse_maps = adresse or f"{cp} {ville}".strip()
+
+    # Date de début formatée FR
+    date_fr = ""
+    date_debut = ch.get("programmation", {}).get("date_debut", "")
+    if date_debut:
+        try:
+            date_fr = datetime.strptime(date_debut, "%Y-%m-%d").strftime("%d/%m/%Y")
+        except ValueError:
+            date_fr = date_debut
+
+    # Photos : images Sellsy (via proxy + token) + photos uploadées
+    sellsy_images = [f for f in ch.get("sellsy_files", []) if f.get("is_image")]
+
+    return templates.TemplateResponse("fiche.html", {
+        "request": request,
+        "ch": ch,
+        "token": t,
+        "sellsy_images": sellsy_images,
+        "adresse_maps": adresse_maps,
+        "date_fr": date_fr,
     })
 
 

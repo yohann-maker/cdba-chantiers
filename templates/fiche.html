@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fiche chantier — {{ ch.sellsy.client or ch.sellsy.nom }}</title>
+    <style>
+        * { box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            margin: 0; padding: 0; background: #f4f5f7; color: #1a1a2e;
+            font-size: 16px; line-height: 1.5;
+        }
+        .wrap { max-width: 720px; margin: 0 auto; padding: 16px; }
+        .head {
+            background: #1a1a2e; color: #fff; border-radius: 14px;
+            padding: 20px; margin-bottom: 16px;
+        }
+        .head h1 { margin: 0 0 4px; font-size: 1.5rem; }
+        .head .opp { opacity: .8; font-size: .95rem; }
+        .head .montant { margin-top: 10px; font-size: 1.25rem; font-weight: 700; color: #ffd166; }
+        .actions { display: flex; gap: 10px; margin-bottom: 16px; flex-wrap: wrap; }
+        .btn {
+            flex: 1; min-width: 140px; text-align: center; text-decoration: none;
+            padding: 14px 16px; border-radius: 12px; font-weight: 600; font-size: 1rem;
+            border: none; cursor: pointer;
+        }
+        .btn-maps { background: #2563eb; color: #fff; }
+        .btn-tel  { background: #16a34a; color: #fff; }
+        .btn-print { background: #e5e7eb; color: #1a1a2e; }
+        .card {
+            background: #fff; border-radius: 14px; padding: 18px; margin-bottom: 16px;
+            box-shadow: 0 1px 3px rgba(0,0,0,.06);
+        }
+        .card h2 {
+            margin: 0 0 12px; font-size: 1.05rem; text-transform: uppercase;
+            letter-spacing: .04em; color: #6b7280; border-bottom: 2px solid #f0f0f3; padding-bottom: 8px;
+        }
+        .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+        .item .label { display: block; font-size: .78rem; text-transform: uppercase; color: #9ca3af; letter-spacing: .03em; }
+        .item .value { display: block; font-size: 1.05rem; font-weight: 600; }
+        .full { grid-column: 1 / -1; }
+        table { width: 100%; border-collapse: collapse; }
+        th { text-align: left; font-size: .78rem; text-transform: uppercase; color: #9ca3af; padding: 6px 8px; border-bottom: 2px solid #f0f0f3; }
+        td { padding: 8px; border-bottom: 1px solid #f4f4f7; vertical-align: top; }
+        td.qty { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+        td.ref { color: #6b7280; font-size: .85rem; white-space: nowrap; }
+        pre { background: #f8f8fb; border-radius: 10px; padding: 12px; margin: 0; white-space: pre-wrap; font-family: inherit; font-size: .98rem; }
+        .note { background: #fffbeb; border-left: 4px solid #f59e0b; border-radius: 8px; padding: 10px 12px; margin-top: 8px; }
+        .note .who { font-size: .8rem; color: #92732a; font-weight: 700; }
+        .photos { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
+        .photos a { display: block; border-radius: 10px; overflow: hidden; background: #eee; }
+        .photos img { width: 100%; height: 160px; object-fit: cover; display: block; }
+        .muted { color: #9ca3af; }
+        .foot { text-align: center; color: #9ca3af; font-size: .8rem; padding: 12px 0 30px; }
+        @media (max-width: 480px) { .grid { grid-template-columns: 1fr; } .photos { grid-template-columns: 1fr; } }
+        @media print {
+            body { background: #fff; }
+            .actions { display: none; }
+            .card, .head { box-shadow: none; border: 1px solid #e5e7eb; }
+            .photos img { height: 220px; }
+        }
+    </style>
+</head>
+<body>
+<div class="wrap">
+
+    <div class="head">
+        <h1>{{ (ch.sellsy.contact_prenom ~ " " if ch.sellsy.contact_prenom) ~ ch.sellsy.client }}</h1>
+        <div class="opp">{{ ch.sellsy.nom }}{% if ch.sellsy.get('devis_ref') %} · {{ ch.sellsy.devis_ref }}{% endif %}</div>
+        {% if ch.sellsy.montant %}<div class="montant">{{ "%.0f"|format(ch.sellsy.montant) }} € HT</div>{% endif %}
+    </div>
+
+    <div class="actions">
+        {% if adresse_maps %}
+        <a class="btn btn-maps" href="https://www.google.com/maps/dir/?api=1&destination={{ adresse_maps|urlencode }}" target="_blank">🧭 Itinéraire</a>
+        {% endif %}
+        {% if ch.sellsy.mobile %}
+        <a class="btn btn-tel" href="tel:{{ ch.sellsy.mobile|replace(' ', '') }}">📞 Appeler le client</a>
+        {% endif %}
+        <button class="btn btn-print" onclick="window.print()">🖨️ Imprimer / PDF</button>
+    </div>
+
+    <!-- Intervention -->
+    <div class="card">
+        <h2>Intervention</h2>
+        <div class="grid">
+            {% if ch.preparation.get('equipe') %}
+            <div class="item full"><span class="label">Équipe</span><span class="value">{{ ", ".join(ch.preparation.equipe) }}{% if ch.preparation.get('nb_personnes') %} ({{ ch.preparation.nb_personnes }} pers.){% endif %}</span></div>
+            {% endif %}
+            {% if date_fr %}
+            <div class="item"><span class="label">Date de début</span><span class="value">{{ date_fr }}</span></div>
+            {% endif %}
+            {% if ch.preparation.get('nb_jours') %}
+            <div class="item"><span class="label">Durée</span><span class="value">{{ ch.preparation.nb_jours }} jour(s)</span></div>
+            {% endif %}
+            {% if ch.sellsy.get('adresse') %}
+            <div class="item full"><span class="label">Adresse chantier</span><span class="value">{{ ch.sellsy.adresse }}</span></div>
+            {% endif %}
+            {% if ch.sellsy.get('mobile') %}
+            <div class="item"><span class="label">Mobile client</span><span class="value">{{ ch.sellsy.mobile }}</span></div>
+            {% endif %}
+            {% if ch.sellsy.get('commercial') %}
+            <div class="item"><span class="label">Commercial</span><span class="value">{{ ch.sellsy.commercial }}</span></div>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Prestations -->
+    {% if ch.sellsy.get('devis_lines') %}
+    <div class="card">
+        <h2>Prestations à réaliser</h2>
+        <table>
+            <thead><tr><th>Réf.</th><th>Description</th><th class="qty">Qté</th><th>Unité</th></tr></thead>
+            <tbody>
+            {% for line in ch.sellsy.devis_lines %}
+                <tr>
+                    <td class="ref">{{ line.reference }}</td>
+                    <td>{{ line.description }}</td>
+                    <td class="qty">{{ "%.0f"|format(line.quantite) if line.quantite == line.quantite|int else "%.2f"|format(line.quantite) }}</td>
+                    <td>{{ line.unite }}</td>
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% endif %}
+
+    <!-- Matériaux + commande -->
+    {% if ch.preparation.get('materiaux') or ch.commande.get('fournisseur') or ch.commande.get('reference_commande') %}
+    <div class="card">
+        <h2>Matériaux & commande</h2>
+        {% if ch.preparation.get('materiaux') %}
+        <pre>{{ ch.preparation.materiaux }}</pre>
+        {% endif %}
+        <div class="grid" style="margin-top:12px">
+            {% if ch.commande.get('fournisseur') %}
+            <div class="item"><span class="label">Fournisseur</span><span class="value">{{ ch.commande.fournisseur }}</span></div>
+            {% endif %}
+            {% if ch.commande.get('reference_commande') %}
+            <div class="item"><span class="label">N° commande</span><span class="value">{{ ch.commande.reference_commande }}</span></div>
+            {% endif %}
+        </div>
+        {% if ch.commande.get('notes') %}
+        <div class="note"><span class="who">Note commande — {{ ch.commande.get('valide_par', 'Julien') }}</span><br>{{ ch.commande.notes }}</div>
+        {% endif %}
+    </div>
+    {% endif %}
+
+    <!-- Notes prépa -->
+    {% if ch.preparation.get('notes') %}
+    <div class="card">
+        <h2>Consignes</h2>
+        <div class="note"><span class="who">Note prépa — {{ ch.preparation.get('valide_par', 'William') }}</span><br>{{ ch.preparation.notes }}</div>
+    </div>
+    {% endif %}
+
+    <!-- Photos -->
+    <div class="card">
+        <h2>Photos</h2>
+        {% if sellsy_images or ch.get('photos') %}
+        <div class="photos">
+            {% for img in sellsy_images %}
+            <a href="/sellsy-file/{{ ch.id }}/{{ loop.index0 }}?t={{ token }}" target="_blank">
+                <img src="/sellsy-file/{{ ch.id }}/{{ loop.index0 }}?t={{ token }}" alt="{{ img.name }}" loading="lazy">
+            </a>
+            {% endfor %}
+            {% for photo in ch.get('photos', []) %}
+            <a href="/uploads/{{ ch.id }}/{{ photo.filename }}" target="_blank">
+                <img src="/uploads/{{ ch.id }}/{{ photo.filename }}" alt="{{ photo.original_name }}" loading="lazy">
+            </a>
+            {% endfor %}
+        </div>
+        {% else %}
+        <p class="muted">Aucune photo disponible.</p>
+        {% endif %}
+    </div>
+
+    <div class="foot">CDBA — Fiche chantier · Compagnie des Bâtiments</div>
+
+</div>
+</body>
+</html>
