@@ -31,12 +31,14 @@ SLACK_WEBHOOK_URL = os.getenv("SLACK_WEBHOOK_CHANTIERS", "")
 # URL publique de l'app (pour fabriquer les liens vers les fiches chantier)
 APP_BASE_URL = os.getenv("APP_BASE_URL", "https://cdba-chantiers-production.up.railway.app").rstrip("/")
 
-# Alerte Slack "ta partie n'est pas faite" (Option A) — canal dédié ou, par défaut, le canal chantiers
+# Alerte Slack "ta partie n'est pas faite" (Option A)
+# Préféré : DM via bot token. Repli : @mention dans un canal via webhook.
+SLACK_BOT_TOKEN = os.getenv("SLACK_BOT_TOKEN", "")  # xoxb-... → permet d'envoyer des DM
 SLACK_WEBHOOK_PROG = os.getenv("SLACK_WEBHOOK_PROG", "") or os.getenv("SLACK_WEBHOOK_CHANTIERS", "")
-# IDs Slack pour @mentionner les responsables (optionnel : si vide, on écrit juste le prénom)
+# IDs Slack des responsables (DM + @mention). Surcouchables par variables d'env.
 SLACK_IDS = {
-    "William": os.getenv("SLACK_ID_WILLIAM", ""),
-    "Julien": os.getenv("SLACK_ID_JULIEN", ""),
+    "William": os.getenv("SLACK_ID_WILLIAM", "U07TJP2G5AT"),
+    "Julien": os.getenv("SLACK_ID_JULIEN", "U07TCDNQCH0"),
 }
 
 # ──────────────────────────────────────────────────────
@@ -1426,7 +1428,7 @@ async def save_programmation(
         if lvl == "ok":
             lvl = "warn"
         # Option A : prévenir activement William / Julien sur Slack
-        if SLACK_WEBHOOK_PROG:
+        if SLACK_BOT_TOKEN or SLACK_WEBHOOK_PROG:
             _notify_prog_pending(ch, manque, date_debut, user["name"])
             msg += " Ils ont été prévenus sur Slack."
 
@@ -1820,31 +1822,61 @@ def _send_slack_recap_chantier(ch):
 
 
 def _notify_prog_pending(ch, manque_labels, date_debut, par):
-    """Option A : prévient William/Julien sur Slack qu'un chantier vient d'être
-    programmé alors que LEUR partie n'est pas encore faite."""
-    if not SLACK_WEBHOOK_PROG or not manque_labels:
+    """Option A : prévient William/Julien qu'un chantier vient d'être programmé
+    alors que LEUR partie n'est pas encore faite.
+
+    Préféré : DM personnel (bot token). Repli : @mention dans un canal (webhook).
+    """
+    if not manque_labels:
         return
-    try:
-        sellsy = ch.get("sellsy", {})
-        client = sellsy.get("client", "?")
-        ville = sellsy.get("ville", "")
-        url = f"{APP_BASE_URL}/chantier/{ch['id']}"
+    sellsy = ch.get("sellsy", {})
+    client = sellsy.get("client", "?")
+    ville = sellsy.get("ville", "")
+    url = f"{APP_BASE_URL}/chantier/{ch['id']}"
+    entete = f"🔔 Chantier *{client}*" + (f" — {ville}" if ville else "") + f" programmé le {date_debut} (par {par})."
 
-        def _who(label):
-            name = "William" if "William" in label else ("Julien" if "Julien" in label else "")
+    # Qui est responsable de chaque partie manquante (label -> prénom)
+    responsables = {}
+    for label in manque_labels:
+        name = "William" if "William" in label else ("Julien" if "Julien" in label else "")
+        if name:
+            responsables.setdefault(name, []).append(label)
+
+    # 1) DM personnel si bot token dispo
+    if SLACK_BOT_TOKEN:
+        sent_any = False
+        for name, labels in responsables.items():
             sid = SLACK_IDS.get(name)
-            return f"<@{sid}>" if sid else f"*{name}*"
+            if not sid:
+                continue
+            taches = ", ".join(labels)
+            text = (f"{entete}\n⚠️ Ta partie n'est pas encore faite : *{taches}*.\n"
+                    f"👉 Complète-la dans l'app : {url}")
+            try:
+                r = requests.post(
+                    "https://slack.com/api/chat.postMessage",
+                    headers={"Authorization": f"Bearer {SLACK_BOT_TOKEN}"},
+                    json={"channel": sid, "text": text},
+                    timeout=5,
+                )
+                if r.json().get("ok"):
+                    sent_any = True
+                else:
+                    logger.warning(f"DM Slack KO ({name}): {r.text[:150]}")
+            except Exception as e:
+                logger.warning(f"Erreur DM Slack {name} : {e}")
+        if sent_any:
+            return  # DM envoyé, pas besoin du repli canal
 
-        mentions = " ".join(dict.fromkeys(_who(m) for m in manque_labels))  # dédup
+    # 2) Repli : @mention dans le canal (webhook)
+    if SLACK_WEBHOOK_PROG:
+        mentions = " ".join(f"<@{SLACK_IDS[n]}>" if SLACK_IDS.get(n) else f"*{n}*" for n in responsables)
         lignes = "\n".join(f"• {m}" for m in manque_labels)
-        text = (
-            f"🔔 *Chantier programmé : {client}" + (f" — {ville}" if ville else "") + f"* (le {date_debut}, par {par})\n"
-            f"⚠️ Parties pas encore faites :\n{lignes}\n"
-            f"{mentions} → à compléter dans l'app : {url}"
-        )
-        requests.post(SLACK_WEBHOOK_PROG, json={"text": text}, timeout=5)
-    except Exception as e:
-        logger.warning(f"Erreur notif Slack programmation : {e}")
+        text = f"{entete}\n⚠️ Parties pas encore faites :\n{lignes}\n{mentions} → à compléter : {url}"
+        try:
+            requests.post(SLACK_WEBHOOK_PROG, json={"text": text}, timeout=5)
+        except Exception as e:
+            logger.warning(f"Erreur notif Slack programmation : {e}")
 
 
 def _check_and_send_slack_recap(ch):
