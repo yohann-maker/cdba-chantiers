@@ -266,7 +266,8 @@ def create_calendar_events(ch):
     desc_lines.append(fiche_url)
     description = "\n".join(desc_lines)
 
-    # Détection doublons + création
+    # Création (un événement déjà présent ne BLOQUE PAS : un chantier peut être
+    # rallongé / re-programmé. On crée quand même, on prévient juste.)
     nom_recherche = _extract_client_nom(client_name)
     created = 0
     messages = []
@@ -277,13 +278,21 @@ def create_calendar_events(ch):
             messages.append(f"{membre} : pas de calendrier configuré")
             continue
 
-        # Vérifier doublon
+        # On ne saute QUE si un événement strictement identique existe déjà
+        # (même titre + même date de début) = re-clic accidentel. Sinon on crée.
         if nom_recherche:
             existing = gcal.search_events(cal_id, nom_recherche)
             if existing:
-                event_titles = [e.get("summary", "") for e in existing]
-                messages.append(f"{membre} : doublon détecté ({nom_recherche}) → {event_titles[0]}")
-                continue
+                exact_dup = any(
+                    (e.get("summary") or "").strip() == title.strip()
+                    and e.get("start", {}).get("date") == date_debut
+                    for e in existing
+                )
+                if exact_dup:
+                    messages.append(f"{membre} : événement identique déjà présent ({title}) — non recréé")
+                    continue
+                # Événement similaire (autre titre/date) → on PRÉVIENT mais on crée quand même
+                messages.append(f"{membre} : ⚠️ un événement existe déjà pour {nom_recherche} ({existing[0].get('summary','')}) — nouvel event créé quand même")
 
         # Créer l'event
         try:
@@ -1422,6 +1431,11 @@ async def save_programmation(
     else:
         msg = f"Programmé le {date_debut} — {created} événement(s) créé(s) dans l'agenda."
         lvl = "ok"
+        # Prévenir si un événement existait déjà (créé quand même)
+        warns = [m for m in cal_messages if "⚠️" in m or "déjà présent" in m]
+        if warns:
+            msg += " Note : " + " ; ".join(warns)
+            lvl = "warn"
 
     if manque:
         msg += " ⚠️ Reste à faire avant que le chantier soit prêt : " + ", ".join(manque) + "."
