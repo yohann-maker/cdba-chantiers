@@ -40,11 +40,12 @@
         .item .label { display: block; font-size: .78rem; text-transform: uppercase; color: #9ca3af; letter-spacing: .03em; }
         .item .value { display: block; font-size: 1.05rem; font-weight: 600; }
         .full { grid-column: 1 / -1; }
-        table { width: 100%; border-collapse: collapse; }
-        th { text-align: left; font-size: .78rem; text-transform: uppercase; color: #9ca3af; padding: 6px 8px; border-bottom: 2px solid #f0f0f3; }
-        td { padding: 8px; border-bottom: 1px solid #f4f4f7; vertical-align: top; }
-        td.qty { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
-        td.ref { color: #6b7280; font-size: .85rem; white-space: nowrap; }
+        .presta { padding: 12px 0; border-bottom: 1px solid #f0f0f3; }
+        .presta:last-child { border-bottom: none; padding-bottom: 0; }
+        .presta-desc { font-size: 1rem; line-height: 1.45; white-space: pre-wrap; overflow-wrap: anywhere; }
+        .presta-meta { margin-top: 6px; font-size: .85rem; color: #6b7280; display: flex; gap: 14px; flex-wrap: wrap; align-items: baseline; }
+        .presta-ref { font-variant-numeric: tabular-nums; }
+        .presta-qty { font-weight: 700; color: #1a1a2e; white-space: nowrap; }
         pre { background: #f8f8fb; border-radius: 10px; padding: 12px; margin: 0; white-space: pre-wrap; font-family: inherit; font-size: .98rem; }
         .note { background: #fffbeb; border-left: 4px solid #f59e0b; border-radius: 8px; padding: 10px 12px; margin-top: 8px; }
         .note .who { font-size: .8rem; color: #92732a; font-weight: 700; }
@@ -107,19 +108,15 @@
     {% if ch.sellsy.get('devis_lines') %}
     <div class="card">
         <h2>Prestations à réaliser</h2>
-        <table>
-            <thead><tr><th>Réf.</th><th>Description</th><th class="qty">Qté</th><th>Unité</th></tr></thead>
-            <tbody>
-            {% for line in ch.sellsy.devis_lines %}
-                <tr>
-                    <td class="ref">{{ line.reference }}</td>
-                    <td>{{ line.description }}</td>
-                    <td class="qty">{{ "%.0f"|format(line.quantite) if line.quantite == line.quantite|int else "%.2f"|format(line.quantite) }}</td>
-                    <td>{{ line.unite }}</td>
-                </tr>
-            {% endfor %}
-            </tbody>
-        </table>
+        {% for line in ch.sellsy.devis_lines %}
+        <div class="presta">
+            <div class="presta-desc">{{ line.description }}</div>
+            <div class="presta-meta">
+                {% if line.reference %}<span class="presta-ref">{{ line.reference }}</span>{% endif %}
+                {% if line.quantite %}<span class="presta-qty">{{ "%.0f"|format(line.quantite) if line.quantite == line.quantite|int else "%.2f"|format(line.quantite) }}{% if line.unite %} {{ line.unite }}{% endif %}</span>{% endif %}
+            </div>
+        </div>
+        {% endfor %}
     </div>
     {% endif %}
 
