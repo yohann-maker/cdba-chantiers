@@ -248,7 +248,8 @@ def create_calendar_events(ch):
         desc_lines.append(f"Commercial : {commercial}")
     desc_lines.append(f"Durée : {nb_jours} jour(s)")
     # Lien vers la fiche chantier complète (prestations + photos), sans login
-    fiche_url = f"{APP_BASE_URL}/fiche/{ch['id']}?t={fiche_token(ch['id'])}"
+    # &ref=cdba en fin d'URL : caractère sacrifiable si Google Agenda tronque le lien
+    fiche_url = f"{APP_BASE_URL}/fiche/{ch['id']}?t={fiche_token(ch['id'])}&ref=cdba"
     desc_lines.append("")
     desc_lines.append("📋 Fiche chantier (détails + photos) :")
     desc_lines.append(fiche_url)
@@ -788,6 +789,17 @@ def fiche_token(chantier_id):
     return hashlib.sha256(f"fiche:{chantier_id}:{secret}".encode()).hexdigest()[:16]
 
 
+def valid_fiche_token(chantier_id, t):
+    """Valide le token de fiche, en tolérant une troncature de fin.
+
+    Google Agenda (mobile) coupe parfois le ou les derniers caractères d'une URL
+    auto-détectée en fin de description. On accepte donc un préfixe du vrai token
+    (≥ 12 caractères hex = ~48 bits, reste non devinable).
+    """
+    full = fiche_token(chantier_id)
+    return bool(t) and len(t) >= 12 and full.startswith(t)
+
+
 def get_current_user(request: Request):
     token = request.cookies.get("session")
     if not token:
@@ -972,7 +984,7 @@ async def sellsy_file_proxy(request: Request, chantier_id: str, file_index: int,
 
     Accès : utilisateur connecté OU token de fiche valide (lien agenda ouvrier).
     """
-    if t != fiche_token(chantier_id):
+    if not valid_fiche_token(chantier_id, t):
         user = get_current_user(request)
         if not user:
             raise HTTPException(401, "Non autorisé")
@@ -1004,7 +1016,7 @@ async def fiche_publique(request: Request, chantier_id: str, t: str = ""):
     Ouvre directement une page propre (imprimable en PDF) avec tous les détails
     de l'intervention + les photos. Lien inséré dans l'event Google Agenda.
     """
-    if t != fiche_token(chantier_id):
+    if not valid_fiche_token(chantier_id, t):
         raise HTTPException(403, "Lien invalide ou expiré")
     chantiers = load_chantiers()
     ch = chantiers.get(chantier_id)
