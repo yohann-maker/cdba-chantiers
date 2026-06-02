@@ -1987,6 +1987,26 @@ def _check_api_key(request: Request):
         raise HTTPException(401, "Clé API invalide")
 
 
+@app.get("/api/test-dm")
+async def api_test_dm(request: Request, user: str = "U07SVVBTWMV"):
+    """Test : demande au bot d'envoyer un DM (vérifie token + scope). Protégé par clé API."""
+    _check_api_key(request)
+    if not SLACK_BOT_TOKEN:
+        return JSONResponse({"ok": False, "error": "SLACK_BOT_TOKEN absent dans Railway"})
+    try:
+        r = requests.post(
+            "https://slack.com/api/chat.postMessage",
+            headers={"Authorization": f"Bearer {SLACK_BOT_TOKEN}"},
+            json={"channel": user, "text": "✅ Test CDBA Chantiers — le bot peut bien t'envoyer un DM. (message de test, tu peux l'ignorer)"},
+            timeout=8,
+        )
+        data = r.json()
+        # On ne renvoie que le statut, jamais le token
+        return JSONResponse({"ok": data.get("ok"), "error": data.get("error"), "channel": data.get("channel")})
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": str(e)[:150]})
+
+
 @app.get("/api/chantiers")
 async def api_list_chantiers(request: Request):
     """Liste tous les chantiers avec leur état (pour scripts externes)."""
