@@ -12,6 +12,7 @@ import uuid
 import time
 import logging
 import threading
+import urllib.parse
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -29,6 +30,14 @@ SLACK_WEBHOOK_URL = os.getenv("SLACK_WEBHOOK_CHANTIERS", "")
 
 # URL publique de l'app (pour fabriquer les liens vers les fiches chantier)
 APP_BASE_URL = os.getenv("APP_BASE_URL", "https://cdba-chantiers-production.up.railway.app").rstrip("/")
+
+# Alerte Slack "ta partie n'est pas faite" (Option A) — canal dédié ou, par défaut, le canal chantiers
+SLACK_WEBHOOK_PROG = os.getenv("SLACK_WEBHOOK_PROG", "") or os.getenv("SLACK_WEBHOOK_CHANTIERS", "")
+# IDs Slack pour @mentionner les responsables (optionnel : si vide, on écrit juste le prénom)
+SLACK_IDS = {
+    "William": os.getenv("SLACK_ID_WILLIAM", ""),
+    "Julien": os.getenv("SLACK_ID_JULIEN", ""),
+}
 
 # ──────────────────────────────────────────────────────
 # CONFIG
@@ -1307,8 +1316,18 @@ async def save_programmation(
     equipe = ch.get("preparation", {}).get("equipe", [])
     nb_jours = ch.get("preparation", {}).get("nb_jours", 1)
 
+    def _redir(msg, lvl="ok"):
+        """Redirige vers la fiche chantier avec un message visible (banner)."""
+        qs = urllib.parse.urlencode({"msg": msg, "lvl": lvl})
+        return RedirectResponse(f"/chantier/{chantier_id}?{qs}", status_code=302)
+
     # Mode auto : trouver le premier créneau libre
-    if mode == "auto" and equipe:
+    if mode == "auto":
+        if not equipe:
+            return _redir(
+                "Impossible de programmer en automatique : aucune équipe définie. "
+                "La préparation (William) n'est pas faite → soit tu attends, soit tu choisis une date manuellement.",
+                "err")
         found_date = _find_earliest_slot(equipe, nb_jours)
         if found_date:
             date_debut = found_date
@@ -1319,12 +1338,13 @@ async def save_programmation(
                 "date": datetime.now().isoformat(),
             })
             save_chantiers(chantiers)
-            return RedirectResponse(f"/chantier/{chantier_id}", status_code=302)
+            return _redir(
+                "Aucun créneau libre trouvé sur 8 semaines pour l'équipe. Choisis une date manuellement.",
+                "err")
 
     if not date_debut:
-        # Fallback : pas de date fournie et pas d'auto
-        save_chantiers(chantiers)
-        return RedirectResponse(f"/chantier/{chantier_id}", status_code=302)
+        # Manuel sans date saisie : on ne valide rien, mais on le DIT (plus d'échec silencieux)
+        return _redir("Aucune date saisie. Choisis une date, ou utilise le mode automatique.", "err")
 
     try:
         start_dt = datetime.strptime(date_debut, "%Y-%m-%d")
@@ -1350,12 +1370,15 @@ async def save_programmation(
     })
 
     # Création Google Calendar + récap (tous les utilisateurs autorisés, pas que Gina)
+    created = 0
+    cal_error = None
+    cal_messages = []
     if equipe and date_debut:
         try:
-            created, messages = create_calendar_events(ch)
+            created, cal_messages = create_calendar_events(ch)
             cal_action = f"Agenda : {created} event(s) créé(s)"
-            if messages:
-                cal_action += f" — {'; '.join(messages)}"
+            if cal_messages:
+                cal_action += f" — {'; '.join(cal_messages)}"
             ch["historique"].append({
                 "action": cal_action,
                 "par": "système",
@@ -1366,14 +1389,48 @@ async def save_programmation(
             except Exception as e:
                 logger.warning(f"Erreur MAJ récap hebdo : {e}")
         except Exception as e:
+            cal_error = str(e)[:120]
             ch["historique"].append({
-                "action": f"Erreur création agenda : {str(e)[:100]}",
+                "action": f"Erreur création agenda : {cal_error}",
                 "par": "système",
                 "date": datetime.now().isoformat(),
             })
 
     save_chantiers(chantiers)
-    return RedirectResponse(f"/chantier/{chantier_id}", status_code=302)
+
+    # Étapes encore à faire (pour prévenir William / Julien)
+    manque = []
+    if not ch.get("preparation", {}).get("valide_par"):
+        manque.append("Préparation (William)")
+    if not ch.get("commande", {}).get("valide_par"):
+        manque.append("Commande (Julien)")
+
+    # Message clair selon le résultat de la création d'agenda
+    if not equipe:
+        msg = (f"Programmé le {date_debut}, mais AUCUN événement agenda créé : pas d'équipe "
+               f"(la préparation de William n'est pas faite).")
+        lvl = "warn"
+    elif cal_error:
+        msg = f"Programmé le {date_debut}, mais ERREUR à la création de l'agenda : {cal_error}"
+        lvl = "err"
+    elif created == 0:
+        detail = "; ".join(cal_messages) if cal_messages else "raison inconnue"
+        msg = f"Programmé le {date_debut}, mais AUCUN événement agenda créé ({detail})."
+        lvl = "warn"
+    else:
+        msg = f"Programmé le {date_debut} — {created} événement(s) créé(s) dans l'agenda."
+        lvl = "ok"
+
+    if manque:
+        msg += " ⚠️ Reste à faire avant que le chantier soit prêt : " + ", ".join(manque) + "."
+        if lvl == "ok":
+            lvl = "warn"
+        # Option A : prévenir activement William / Julien sur Slack
+        if SLACK_WEBHOOK_PROG:
+            _notify_prog_pending(ch, manque, date_debut, user["name"])
+            msg += " Ils ont été prévenus sur Slack."
+
+    return _redir(msg, lvl)
 
 
 def _update_weekly_recap(ch):
@@ -1760,6 +1817,34 @@ def _send_slack_recap_chantier(ch):
         requests.post(SLACK_WEBHOOK_URL, json={"blocks": blocks}, timeout=5)
     except Exception as e:
         logger.warning(f"Erreur envoi Slack récap chantier : {e}")
+
+
+def _notify_prog_pending(ch, manque_labels, date_debut, par):
+    """Option A : prévient William/Julien sur Slack qu'un chantier vient d'être
+    programmé alors que LEUR partie n'est pas encore faite."""
+    if not SLACK_WEBHOOK_PROG or not manque_labels:
+        return
+    try:
+        sellsy = ch.get("sellsy", {})
+        client = sellsy.get("client", "?")
+        ville = sellsy.get("ville", "")
+        url = f"{APP_BASE_URL}/chantier/{ch['id']}"
+
+        def _who(label):
+            name = "William" if "William" in label else ("Julien" if "Julien" in label else "")
+            sid = SLACK_IDS.get(name)
+            return f"<@{sid}>" if sid else f"*{name}*"
+
+        mentions = " ".join(dict.fromkeys(_who(m) for m in manque_labels))  # dédup
+        lignes = "\n".join(f"• {m}" for m in manque_labels)
+        text = (
+            f"🔔 *Chantier programmé : {client}" + (f" — {ville}" if ville else "") + f"* (le {date_debut}, par {par})\n"
+            f"⚠️ Parties pas encore faites :\n{lignes}\n"
+            f"{mentions} → à compléter dans l'app : {url}"
+        )
+        requests.post(SLACK_WEBHOOK_PROG, json={"text": text}, timeout=5)
+    except Exception as e:
+        logger.warning(f"Erreur notif Slack programmation : {e}")
 
 
 def _check_and_send_slack_recap(ch):
