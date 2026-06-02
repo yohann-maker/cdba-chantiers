@@ -761,7 +761,9 @@ def _extract_opp_data(opp):
         "mobile": mobile,
         "montant": amount,
         "step": opp.get("stepLabel", opp.get("step_label", "")),
-        "commercial": opp.get("ownerFullName", ""),
+        # Sellsy v1 renvoie "ownerFullname" (n minuscule) — on essaie les variantes par sécurité
+        "commercial": (opp.get("ownerFullname") or opp.get("ownerFullName")
+                       or opp.get("owner_fullname") or ""),
         "created": opp.get("created", ""),
         "description": opp.get("description", ""),
     }
