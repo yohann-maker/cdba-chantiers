@@ -85,9 +85,6 @@
     <div class="card">
         <h2>Intervention</h2>
         <div class="grid">
-            {% if ch.preparation.get('equipe') %}
-            <div class="item full"><span class="label">Équipe</span><span class="value">{{ ", ".join(ch.preparation.equipe) }}{% if ch.preparation.get('nb_personnes') %} ({{ ch.preparation.nb_personnes }} pers.){% endif %}</span></div>
-            {% endif %}
             {% if date_fr %}
             <div class="item"><span class="label">Date de début</span><span class="value">{{ date_fr }}</span></div>
             {% endif %}
