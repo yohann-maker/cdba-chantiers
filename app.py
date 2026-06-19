@@ -442,6 +442,32 @@ def get_sellsy_v2_client():
     return SellsyV2Client(SELLSY_V2_CONFIG)
 
 
+def refresh_sellsy_files(ch):
+    """Re-récupère les fichiers Sellsy en direct pour un chantier.
+
+    Le snapshot fait à l'import devient obsolète : si le commercial ajoute des
+    photos à l'opportunité APRÈS, ou si les liens publics Sellsy expirent, la
+    fiche n'a plus rien à montrer. On rafraîchit donc à la demande.
+
+    Renvoie la liste à jour et met à jour ch['sellsy_files']. En cas de réponse
+    vide (Sellsy indisponible OU vraiment aucun fichier), on conserve l'ancien
+    snapshot pour ne pas effacer des photos sur une erreur réseau passagère.
+    """
+    opp_id = ch.get("id")
+    v2 = get_sellsy_v2_client()
+    if not v2 or not opp_id:
+        return ch.get("sellsy_files", [])
+    try:
+        fresh = v2.get_opportunity_files(opp_id)
+    except Exception as e:
+        logger.warning(f"refresh_sellsy_files {opp_id}: {e}")
+        return ch.get("sellsy_files", [])
+    if fresh:
+        ch["sellsy_files"] = fresh
+        return fresh
+    return ch.get("sellsy_files", [])
+
+
 # ──────────────────────────────────────────────────────
 # STOCKAGE LOCAL (JSON)
 # ──────────────────────────────────────────────────────
@@ -1018,13 +1044,18 @@ async def sellsy_file_proxy(request: Request, chantier_id: str, file_index: int,
     images = [f for f in ch.get("sellsy_files", []) if f.get("is_image")]
     if file_index < 0 or file_index >= len(images):
         raise HTTPException(404, "Image non trouvée")
-    public_link = images[file_index].get("public_link")
-    if not public_link:
-        raise HTTPException(404, "Pas de lien public")
+    img = images[file_index]
+    public_link = img.get("public_link")
     # Télécharger et servir l'image directement
-    resp = requests.get(public_link, timeout=15)
-    if resp.status_code != 200:
-        raise HTTPException(502, "Impossible de récupérer le fichier")
+    resp = requests.get(public_link, timeout=15) if public_link else None
+    # Lien Sellsy expiré/absent → on en redemande un frais via l'API et on réessaie
+    if resp is None or resp.status_code != 200:
+        v2 = get_sellsy_v2_client()
+        fresh_link = v2.get_file_public_link(img.get("id")) if (v2 and img.get("id")) else None
+        if fresh_link:
+            resp = requests.get(fresh_link, timeout=15)
+        if resp is None or resp.status_code != 200:
+            raise HTTPException(502, "Impossible de récupérer le fichier")
     content_type = resp.headers.get("Content-Type", "image/jpeg")
     return Response(content=resp.content, media_type=content_type, headers={
         "Cache-Control": "public, max-age=86400",
@@ -1061,8 +1092,10 @@ async def fiche_publique(request: Request, chantier_id: str, t: str = ""):
         except ValueError:
             date_fr = date_debut
 
-    # Photos : images Sellsy (via proxy + token) + photos uploadées
-    sellsy_images = [f for f in ch.get("sellsy_files", []) if f.get("is_image")]
+    # Photos : images Sellsy (rafraîchies en direct) + photos uploadées
+    sellsy_files = refresh_sellsy_files(ch)
+    save_chantiers(chantiers)
+    sellsy_images = [f for f in sellsy_files if f.get("is_image")]
 
     return templates.TemplateResponse("fiche.html", {
         "request": request,
@@ -1819,9 +1852,16 @@ def _send_slack_recap_chantier(ch):
                 "text": {"type": "mrkdwn", "text": f"*📝 Note de {cmd.get('valide_par', 'Julien')} (commande) :*\n>{notes_cmd}"}
             })
 
-        # Photos Sellsy + photos uploadées manuellement
+        # Lien vers la fiche chantier complète (détails + photos), ouvrable sans login
+        fiche_url = f"{APP_BASE_URL}/fiche/{ch['id']}?t={fiche_token(ch['id'])}&ref=cdba"
+        blocks.append({
+            "type": "section",
+            "text": {"type": "mrkdwn", "text": f"📋 <{fiche_url}|Ouvrir la fiche chantier complète (détails + photos)>"}
+        })
+
+        # Photos Sellsy (rafraîchies en direct) + photos uploadées manuellement
         photos_urls = []
-        for f in ch.get("sellsy_files", []):
+        for f in refresh_sellsy_files(ch):
             if f.get("is_image") and f.get("public_link"):
                 photos_urls.append((f["public_link"], f.get("name", "Photo Sellsy")))
         for p in ch.get("photos", []):
