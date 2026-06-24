@@ -248,6 +248,29 @@ def create_calendar_events(ch):
     adresse = sellsy.get("adresse", "")
     commercial = sellsy.get("commercial", "")
 
+    # Filet anti-event-sans-adresse : si l'adresse stockée est vide (chantier
+    # programmé avant qu'une synchro ait enrichi l'adresse, ou adresse ajoutée
+    # dans Sellsy après coup), on la re-récupère en direct depuis Sellsy au
+    # moment de créer l'event. Sinon le worker reçoit un agenda sans lieu, et
+    # l'event n'est jamais corrigé ensuite. On persiste aussi dans le chantier.
+    if not adresse.strip():
+        client = get_sellsy_client()
+        if client:
+            try:
+                addr, ville, cp_code, prenom, mob = _fetch_opp_details(client, ch["id"])
+                if addr:
+                    adresse = addr
+                    sellsy["adresse"] = addr
+                    if ville and not sellsy.get("ville"):
+                        sellsy["ville"] = ville
+                    if cp_code and not sellsy.get("cp"):
+                        sellsy["cp"] = cp_code
+                    if mob and not sellsy.get("mobile"):
+                        sellsy["mobile"] = mob
+                        mobile = mob
+            except Exception as e:
+                logger.warning(f"Re-fetch adresse opp {ch.get('id')} échoué : {e}")
+
     # Description complète
     desc_lines = []
     if mobile:
