@@ -7,6 +7,7 @@ Workflow : Sellsy → William (prépa) → Julien (commande) → Gina/Marina (pl
 import json
 import os
 import re
+import io
 import hashlib
 import uuid
 import time
@@ -463,6 +464,80 @@ def get_sellsy_v2_client():
     if not SELLSY_V2_CONFIG["client_id"]:
         return None
     return SellsyV2Client(SELLSY_V2_CONFIG)
+
+
+# ──────────────────────────────────────────────────────
+# PHOTOS EMBALLÉES DANS UN PDF
+# ──────────────────────────────────────────────────────
+# Les commerciaux envoient parfois leurs photos de visite converties en PDF
+# (réflexe iPhone « Scanner un document »). Sellsy les stocke alors avec
+# l'extension .pdf : elles n'étaient jamais affichées sur la fiche ouvrier.
+# Or ces PDF ne contiennent qu'une page avec la photo JPEG d'origine collée
+# dedans → on la ré-extrait telle quelle (sans perte, sans rasterisation).
+
+PDF_PHOTO_CACHE = DATA_DIR / "pdf_photos"
+PDF_PHOTO_CACHE.mkdir(exist_ok=True)
+PDF_PHOTO_MAX_PX = 1600  # une photo iPhone 24 Mpx pèse 5-12 Mo : illisible en 4G
+
+
+def is_pdf_file(f):
+    return (f.get("extension") or "").lower() == "pdf"
+
+
+def displayable_files(files):
+    """Fichiers montrables dans la galerie : images + PDF (photo extraite)."""
+    return [f for f in files if f.get("is_image") or is_pdf_file(f)]
+
+
+def extract_pdf_photo(file_id, raw):
+    """Photo JPEG contenue dans un PDF, ou None si c'est un vrai document.
+
+    Résultat mis en cache sur disque (y compris l'absence de photo) : sans ça
+    chaque ouverture de fiche retélécharge des dizaines de Mo depuis Sellsy.
+    """
+    cache_img = PDF_PHOTO_CACHE / f"{file_id}.jpg"
+    cache_none = PDF_PHOTO_CACHE / f"{file_id}.none"
+    if cache_img.exists():
+        return cache_img.read_bytes()
+    if cache_none.exists():
+        return None
+    try:
+        from pypdf import PdfReader
+        from PIL import Image
+
+        images = PdfReader(io.BytesIO(raw)).pages[0].images
+        if not images:
+            cache_none.touch()
+            return None
+        img = Image.open(io.BytesIO(images[0].data))
+        img.thumbnail((PDF_PHOTO_MAX_PX, PDF_PHOTO_MAX_PX))
+        buf = io.BytesIO()
+        img.convert("RGB").save(buf, "JPEG", quality=82, optimize=True)
+        cache_img.write_bytes(buf.getvalue())
+        return buf.getvalue()
+    except Exception as e:
+        logger.warning(f"extract_pdf_photo {file_id}: {e}")
+        return None
+
+
+def document_placeholder(name):
+    """Vignette neutre pour un PDF qui n'est pas une photo (devis signé, PV…).
+
+    Évite l'image cassée dans la galerie : l'ouvrier voit une carte cliquable.
+    """
+    try:
+        from PIL import Image, ImageDraw
+
+        img = Image.new("RGB", (800, 600), (233, 237, 242))
+        d = ImageDraw.Draw(img)
+        d.rectangle([300, 190, 500, 410], outline=(120, 134, 150), width=6)
+        d.text((360, 430), "DOCUMENT PDF", fill=(90, 104, 120))
+        d.text((360, 450), (name or "")[:40], fill=(120, 134, 150))
+        buf = io.BytesIO()
+        img.save(buf, "JPEG", quality=80)
+        return buf.getvalue()
+    except Exception:
+        return None
 
 
 def refresh_sellsy_files(ch):
@@ -1063,11 +1138,19 @@ async def sellsy_file_proxy(request: Request, chantier_id: str, file_index: int,
     ch = chantiers.get(chantier_id)
     if not ch:
         raise HTTPException(404, "Chantier non trouvé")
-    # Filtrer uniquement les images (même logique que le template)
-    images = [f for f in ch.get("sellsy_files", []) if f.get("is_image")]
+    # Images + PDF (même logique que le template)
+    images = displayable_files(ch.get("sellsy_files", []))
     if file_index < 0 or file_index >= len(images):
         raise HTTPException(404, "Image non trouvée")
     img = images[file_index]
+
+    # PDF déjà converti : on sert le cache sans rien retélécharger
+    if is_pdf_file(img) and img.get("id"):
+        cached = PDF_PHOTO_CACHE / f"{img['id']}.jpg"
+        if cached.exists():
+            return Response(content=cached.read_bytes(), media_type="image/jpeg",
+                            headers={"Cache-Control": "public, max-age=86400"})
+
     public_link = img.get("public_link")
     # Télécharger et servir l'image directement
     resp = requests.get(public_link, timeout=15) if public_link else None
@@ -1076,9 +1159,23 @@ async def sellsy_file_proxy(request: Request, chantier_id: str, file_index: int,
         v2 = get_sellsy_v2_client()
         fresh_link = v2.get_file_public_link(img.get("id")) if (v2 and img.get("id")) else None
         if fresh_link:
-            resp = requests.get(fresh_link, timeout=15)
+            resp = requests.get(fresh_link, timeout=30)
         if resp is None or resp.status_code != 200:
             raise HTTPException(502, "Impossible de récupérer le fichier")
+
+    # PDF : en sortir la photo, sinon vignette « document »
+    if is_pdf_file(img):
+        photo = extract_pdf_photo(img.get("id") or "x", resp.content)
+        if photo:
+            return Response(content=photo, media_type="image/jpeg", headers={
+                "Cache-Control": "public, max-age=86400",
+            })
+        placeholder = document_placeholder(img.get("name"))
+        if placeholder:
+            return Response(content=placeholder, media_type="image/jpeg", headers={
+                "Cache-Control": "public, max-age=86400",
+            })
+
     content_type = resp.headers.get("Content-Type", "image/jpeg")
     return Response(content=resp.content, media_type=content_type, headers={
         "Cache-Control": "public, max-age=86400",
@@ -1118,7 +1215,7 @@ async def fiche_publique(request: Request, chantier_id: str, t: str = ""):
     # Photos : images Sellsy (rafraîchies en direct) + photos uploadées
     sellsy_files = refresh_sellsy_files(ch)
     save_chantiers(chantiers)
-    sellsy_images = [f for f in sellsy_files if f.get("is_image")]
+    sellsy_images = displayable_files(sellsy_files)
 
     return templates.TemplateResponse("fiche.html", {
         "request": request,
@@ -1884,8 +1981,14 @@ def _send_slack_recap_chantier(ch):
 
         # Photos Sellsy (rafraîchies en direct) + photos uploadées manuellement
         photos_urls = []
-        for f in refresh_sellsy_files(ch):
-            if f.get("is_image") and f.get("public_link"):
+        tok = fiche_token(ch["id"])
+        for idx, f in enumerate(displayable_files(refresh_sellsy_files(ch))):
+            if is_pdf_file(f):
+                # Photo emballée dans un PDF : Slack ne sait pas l'afficher,
+                # on passe par le proxy qui en sort le JPEG.
+                photos_urls.append((f"{APP_BASE_URL}/sellsy-file/{ch['id']}/{idx}?t={tok}",
+                                    f.get("name", "Photo Sellsy")))
+            elif f.get("public_link"):
                 photos_urls.append((f["public_link"], f.get("name", "Photo Sellsy")))
         for p in ch.get("photos", []):
             if p.get("url"):
