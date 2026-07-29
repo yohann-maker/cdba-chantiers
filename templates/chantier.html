@@ -200,23 +200,25 @@
             </div>
             {% endif %}
             {% else %}
-            <form method="post" action="/chantier/{{ ch.id }}/preparation" class="step-form">
+            {% set draft = ch.get('preparation_draft', {}) %}
+            <form method="post" action="/chantier/{{ ch.id }}/preparation" class="step-form"
+                  onsubmit="if(!this.querySelector('input[name=equipe]:checked')){alert('Coche au moins une personne dans l\'équipe : sans équipe, le chantier ne peut pas être programmé dans l\'agenda.');return false;}">
                 <div class="form-row">
                     <div class="form-group">
                         <label for="nb_personnes">Nombre de personnes</label>
-                        <input type="number" id="nb_personnes" name="nb_personnes" min="1" max="10" value="2" required>
+                        <input type="number" id="nb_personnes" name="nb_personnes" min="1" max="10" value="{{ draft.get('nb_personnes', 2) }}" required>
                     </div>
                     <div class="form-group">
                         <label for="nb_jours">Nombre de jours</label>
-                        <input type="number" id="nb_jours" name="nb_jours" min="1" max="30" value="1" required>
+                        <input type="number" id="nb_jours" name="nb_jours" min="1" max="30" value="{{ draft.get('nb_jours', 1) }}" required>
                     </div>
                 </div>
                 <div class="form-group">
-                    <label>Équipe préconisée</label>
+                    <label>Équipe préconisée <span style="color:var(--red)">(obligatoire)</span></label>
                     <div class="checkbox-group">
                         {% for membre in equipe %}
                         <label class="checkbox-label">
-                            <input type="checkbox" name="equipe" value="{{ membre }}">
+                            <input type="checkbox" name="equipe" value="{{ membre }}" {{ 'checked' if membre in draft.get('equipe', []) }}>
                             {{ membre }}
                         </label>
                         {% endfor %}
@@ -224,11 +226,11 @@
                 </div>
                 <div class="form-group">
                     <label for="materiaux">Matériaux nécessaires</label>
-                    <textarea id="materiaux" name="materiaux" rows="5" placeholder="Un matériau par ligne&#10;Ex: 20 tuiles canal&#10;5 sacs de ciment&#10;2 rouleaux de bâche"></textarea>
+                    <textarea id="materiaux" name="materiaux" rows="5" placeholder="Un matériau par ligne&#10;Ex: 20 tuiles canal&#10;5 sacs de ciment&#10;2 rouleaux de bâche">{{ draft.get('materiaux', '') }}</textarea>
                 </div>
                 <div class="form-group">
                     <label for="notes">Notes</label>
-                    <textarea id="notes" name="notes" rows="2" placeholder="Remarques, accès difficile, etc."></textarea>
+                    <textarea id="notes" name="notes" rows="2" placeholder="Remarques, accès difficile, etc.">{{ draft.get('notes', '') }}</textarea>
                 </div>
                 <button type="submit" class="btn btn-primary">Valider la préparation</button>
             </form>
@@ -357,13 +359,26 @@
                 </div>
             </div>
             {% else %}
-            {% if ch.preparation.get('equipe') %}
+            {% if not ch.preparation.get('equipe') %}
+            <p class="text-muted" style="margin-bottom:10px;">
+                {% if ch.preparation.get('valide_par') %}
+                ⚠️ La préparation est validée mais <strong>aucune personne n'est cochée dans l'équipe</strong> :
+                la programmation automatique et la création des événements agenda sont impossibles.
+                Clique sur <strong>« Modifier »</strong> dans l'étape 1 et coche les ouvriers.
+                {% else %}
+                ⚠️ Préparation (équipe + durée) pas encore faite : la programmation automatique est indisponible.
+                {% endif %}
+                Tu peux quand même forcer une date ci-dessous — <strong>aucun événement agenda ne sera créé</strong>.
+            </p>
+            {% endif %}
             <form method="post" action="/chantier/{{ ch.id }}/programmation" class="step-form">
                 <input type="hidden" name="mode" value="auto">
+                {% if ch.preparation.get('equipe') %}
                 <button type="submit" class="btn btn-primary btn-full" style="font-size:16px; padding:14px;">
                     Programmer automatiquement
                 </button>
-                <details style="margin-top:12px;">
+                {% endif %}
+                <details style="margin-top:12px;" {{ 'open' if not ch.preparation.get('equipe') }}>
                     <summary class="text-muted" style="cursor:pointer; font-size:13px;">Forcer une date manuellement</summary>
                     <div class="form-row" style="margin-top:10px;">
                         <div class="form-group">
@@ -378,9 +393,6 @@
                     <button type="submit" class="btn btn-outline" onclick="this.form.querySelector('[name=mode]').value='manual'">Programmer à cette date</button>
                 </details>
             </form>
-            {% else %}
-            <p class="text-muted">En attente de la préparation (équipe + durée) pour programmer automatiquement.</p>
-            {% endif %}
             {% endif %}
         </section>
 

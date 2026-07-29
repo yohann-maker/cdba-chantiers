@@ -1246,6 +1246,18 @@ async def save_preparation(
     if not ch:
         raise HTTPException(404)
 
+    # Sans équipe, la programmation automatique est impossible et le chantier
+    # se retrouve bloqué (préparation "validée" mais rien à programmer).
+    equipe = [m for m in equipe if m]
+    if not equipe:
+        qs = urllib.parse.urlencode({
+            "msg": "Préparation NON validée : il faut cocher au moins une personne dans l'équipe, "
+                   "sinon l'agenda ne peut pas être rempli.",
+            "lvl": "err",
+        })
+        return RedirectResponse(f"/chantier/{chantier_id}?{qs}", status_code=302)
+
+    ch.pop("preparation_draft", None)
     ch["preparation"] = {
         "nb_personnes": nb_personnes,
         "nb_jours": nb_jours,
@@ -1490,9 +1502,14 @@ async def save_programmation(
     # Mode auto : trouver le premier créneau libre
     if mode == "auto":
         if not equipe:
+            if ch.get("preparation", {}).get("valide_par"):
+                detail = ("la préparation est validée mais AUCUNE personne n'a été cochée dans l'équipe. "
+                          "Clique sur « Modifier » dans Préparation et coche les ouvriers.")
+            else:
+                detail = "la préparation (William) n'est pas encore faite."
             return _redir(
-                "Impossible de programmer en automatique : aucune équipe définie. "
-                "La préparation (William) n'est pas faite → soit tu attends, soit tu choisis une date manuellement.",
+                f"Impossible de programmer en automatique : {detail} "
+                "Tu peux aussi forcer une date manuellement (mais sans équipe, aucun événement agenda ne sera créé).",
                 "err")
         found_date = _find_earliest_slot(equipe, nb_jours)
         if found_date:
@@ -1874,6 +1891,9 @@ async def reset_step(request: Request, chantier_id: str, step: str):
     old_by = old_data.get("valide_par", "?")
 
     ch[step] = {}
+    if step == "preparation" and old_data:
+        # On garde les valeurs pour préremplir le formulaire (sinon tout est à ressaisir).
+        ch["preparation_draft"] = old_data
     if step in ("preparation", "commande"):
         ch.pop("slack_recap_sent", None)
     ch["etape"] = _compute_etape(ch)
