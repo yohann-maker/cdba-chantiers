@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 """
 CDBA — App Préparation Chantiers
-Workflow : Sellsy → William (prépa) → Julien (commande) → Gina/Marina (planning) → Prêt
+Workflow : Sellsy → William / Didier (prépa = liste matériel) → Slack #commandes-chantier
+→ Marina (+ Olivier) commande et met ✅ sur le message → Gina/Marina (planning) → Prêt
+(18/11/2026 : Julien part, la commande ne se valide plus dans l'appli mais par ✅ Slack.)
 """
 
 import json
@@ -40,7 +42,12 @@ SLACK_WEBHOOK_PROG = os.getenv("SLACK_WEBHOOK_PROG", "") or os.getenv("SLACK_WEB
 SLACK_IDS = {
     "William": os.getenv("SLACK_ID_WILLIAM", "U07TJP2G5AT"),
     "Julien": os.getenv("SLACK_ID_JULIEN", "U07TCDNQCH0"),
+    "Didier": os.getenv("SLACK_ID_DIDIER", "U08TX0WULTF"),
+    "Marina": os.getenv("SLACK_ID_MARINA", "U0B5PH7U8J3"),
+    "Olivier": os.getenv("SLACK_ID_OLIVIER", "U07TB3DPA0J"),
 }
+# Canal où partent les listes « à commander » (Marina met ✅ une fois commandé)
+SLACK_CHANNEL_COMMANDES = os.getenv("SLACK_CHANNEL_COMMANDES", "C07TBMWEQF5")  # #commandes-chantier
 
 # ──────────────────────────────────────────────────────
 # CONFIG
@@ -64,6 +71,7 @@ app.mount("/uploads", StaticFiles(directory=str(UPLOADS_DIR)), name="uploads")
 USERS = {
     "william": {"name": "William", "role": "preparateur", "password": os.getenv("PASS_WILLIAM", "cdba2026")},
     "julien": {"name": "Julien", "role": "acheteur", "password": os.getenv("PASS_JULIEN", "cdba2026")},
+    "didier": {"name": "Didier", "role": "preparateur", "password": os.getenv("PASS_DIDIER", "cdba2026")},
     "gina": {"name": "Gina", "role": "planificatrice", "password": os.getenv("PASS_GINA", "cdba2026")},
     "marina": {"name": "Marina", "role": "planificatrice", "password": os.getenv("PASS_MARINA", "cdba2026")},
     "yohann": {"name": "Yohann", "role": "admin", "password": os.getenv("PASS_YOHANN", "cdba2026")},
@@ -538,6 +546,74 @@ def document_placeholder(name):
         return buf.getvalue()
     except Exception:
         return None
+
+
+IMG_CACHE = DATA_DIR / "img_small"
+
+
+def shrink_image(file_id, raw):
+    """Photo Sellsy → JPEG ≤ PDF_PHOTO_MAX_PX, en cache disque. None si ce n'est pas une image."""
+    try:
+        IMG_CACHE.mkdir(exist_ok=True)
+        cached = IMG_CACHE / f"{file_id}.jpg" if file_id else None
+        if cached and cached.exists():
+            return cached.read_bytes()
+        from PIL import Image, ImageOps
+        im = ImageOps.exif_transpose(Image.open(io.BytesIO(raw)))
+        im.thumbnail((PDF_PHOTO_MAX_PX, PDF_PHOTO_MAX_PX))
+        buf = io.BytesIO()
+        im.convert("RGB").save(buf, "JPEG", quality=82)
+        out = buf.getvalue()
+        if cached:
+            cached.write_bytes(out)
+        return out
+    except Exception as e:
+        logger.warning(f"shrink_image {file_id}: {e}")
+        return None
+
+
+def _post_a_commander(ch, par):
+    """Poste la liste matériel dans #commandes-chantier : Marina commande puis met ✅.
+
+    Le message porte le lien de la fiche SANS mot de passe (photos incluses).
+    Rien n'est posté si la liste matériel est vide. Retourne une ligne d'historique.
+    """
+    if not SLACK_BOT_TOKEN:
+        return None
+    prep = ch.get("preparation", {})
+    materiaux = (prep.get("materiaux") or "").strip()
+    if not materiaux:
+        return "Pas de liste matériel : rien posté dans #commandes-chantier"
+    sellsy = ch.get("sellsy", {})
+    client = sellsy.get("client", "?")
+    ville = sellsy.get("ville", "")
+    debut = ch.get("programmation", {}).get("date_debut", "")
+    try:
+        debut = datetime.strptime(debut, "%Y-%m-%d").strftime("%d/%m") if debut else ""
+    except ValueError:
+        pass
+    maj = " (MISE À JOUR)" if ch.get("commande_slack_ts") else ""
+    fiche_url = f"{APP_BASE_URL}/fiche/{ch['id']}?t={fiche_token(ch['id'])}&ref=cdba"
+    texte = (f"🛒 *À COMMANDER{maj} : {client}*" + (f" · {ville}" if ville else "")
+             + (f" · chantier le {debut}" if debut else " · date pas encore fixée") + "\n"
+             + f"Liste préparée par {par}\n\n```{materiaux}```\n"
+             + (f"📝 {prep.get('notes')}\n" if prep.get("notes") else "")
+             + f"📋 <{fiche_url}|Fiche + photos (sans mot de passe)>\n\n"
+             + f"<@{SLACK_IDS['Marina']}> : mets ✅ sur ce message une fois commandé "
+             + f"(<@{SLACK_IDS['Olivier']}> en renfort).")
+    try:
+        r = requests.post("https://slack.com/api/chat.postMessage",
+                          headers={"Authorization": f"Bearer {SLACK_BOT_TOKEN}"},
+                          json={"channel": SLACK_CHANNEL_COMMANDES, "text": texte,
+                                "unfurl_links": False}, timeout=8).json()
+        if r.get("ok"):
+            ch["commande_slack_ts"] = r.get("ts")
+            return "Liste matériel postée dans #commandes-chantier (Marina) ✅"
+        logger.warning(f"post à commander KO : {r}")
+        return f"Liste matériel NON postée dans Slack ({r.get('error')})"
+    except Exception as e:
+        logger.warning(f"post à commander : {e}")
+        return "Liste matériel NON postée dans Slack (erreur réseau)"
 
 
 def refresh_sellsy_files(ch):
@@ -1176,6 +1252,10 @@ async def sellsy_file_proxy(request: Request, chantier_id: str, file_index: int,
                 "Cache-Control": "public, max-age=86400",
             })
 
+    small = shrink_image(img.get("id") or "", resp.content)
+    if small:
+        return Response(content=small, media_type="image/jpeg",
+                        headers={"Cache-Control": "public, max-age=86400"})
     content_type = resp.headers.get("Content-Type", "image/jpeg")
     return Response(content=resp.content, media_type=content_type, headers={
         "Cache-Control": "public, max-age=86400",
@@ -1274,6 +1354,9 @@ async def save_preparation(
         "date": datetime.now().isoformat(),
     })
 
+    res = _post_a_commander(ch, user["name"])
+    if res:
+        ch["historique"].append({"action": res, "par": "Automatisation", "date": datetime.now().isoformat()})
     _check_and_send_slack_recap(ch)
     save_chantiers(chantiers)
     return RedirectResponse(f"/chantier/{chantier_id}", status_code=302)
@@ -1585,8 +1668,6 @@ async def save_programmation(
     manque = []
     if not ch.get("preparation", {}).get("valide_par"):
         manque.append("Préparation (William)")
-    if not ch.get("commande", {}).get("valide_par"):
-        manque.append("Commande (Julien)")
 
     # Message clair selon le résultat de la création d'agenda
     if not equipe:
@@ -2003,13 +2084,11 @@ def _send_slack_recap_chantier(ch):
         photos_urls = []
         tok = fiche_token(ch["id"])
         for idx, f in enumerate(displayable_files(refresh_sellsy_files(ch))):
-            if is_pdf_file(f):
-                # Photo emballée dans un PDF : Slack ne sait pas l'afficher,
-                # on passe par le proxy qui en sort le JPEG.
-                photos_urls.append((f"{APP_BASE_URL}/sellsy-file/{ch['id']}/{idx}?t={tok}",
-                                    f.get("name", "Photo Sellsy")))
-            elif f.get("public_link"):
-                photos_urls.append((f["public_link"], f.get("name", "Photo Sellsy")))
+            # 18/11/2026 : TOUJOURS via le proxy de l'appli (photo allégée < 1 Mo, lien
+            # sans mot de passe qui redemande un lien Sellsy frais si besoin). William ne
+            # pouvait pas rouvrir les photos envoyées en direct (photos iPhone 2-12 Mo).
+            photos_urls.append((f"{APP_BASE_URL}/sellsy-file/{ch['id']}/{idx}?t={tok}",
+                                f.get("name", "Photo Sellsy")))
         for p in ch.get("photos", []):
             if p.get("url"):
                 photos_urls.append((p["url"], p.get("name", "Photo chantier")))
@@ -2106,7 +2185,8 @@ def _check_and_send_slack_recap(ch):
     """Vérifie si prépa + commande sont validées → envoie le récap Slack (une seule fois)."""
     prep = ch.get("preparation", {})
     cmd = ch.get("commande", {})
-    if prep.get("valide_par") and cmd.get("valide_par") and not ch.get("slack_recap_sent"):
+    prog = ch.get("programmation", {})
+    if prep.get("valide_par") and (cmd.get("valide_par") or prog.get("date_debut")) and not ch.get("slack_recap_sent"):
         ch["slack_recap_sent"] = True
         threading.Thread(target=_send_slack_recap_chantier, args=(ch,), daemon=True).start()
 
