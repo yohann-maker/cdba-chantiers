@@ -2257,6 +2257,9 @@ async def api_list_chantiers(request: Request):
             "equipe": prep.get("equipe", []),
             "nb_jours": prep.get("nb_jours", 0),
             "created_at": ch.get("created_at", ""),
+            # Lien public de la fiche (même format que l'event agenda auto) :
+            # permet à un script / Claude de l'ajouter dans un event créé à la main
+            "fiche_url": f"{APP_BASE_URL}/fiche/{cid}?t={fiche_token(cid)}&ref=cdba",
         })
     return JSONResponse(result)
 
